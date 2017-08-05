@@ -19,6 +19,7 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(InterruptPinA), countA, RISING);
   attachInterrupt(digitalPinToInterrupt(InterruptPinB), countB, CHANGE);
   Serial.begin(115200);
+  Serial.setTimeout(1);
 }
 
 void loop()
@@ -32,7 +33,7 @@ void loop()
 void process_line() {
   char cmd = Serial.read();
   while (!Serial.available()) {
-    delay(10);
+    delay(1);
   }
   //if(cmd>'Z') cmd-=32;
   switch(cmd) {
