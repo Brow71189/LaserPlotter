@@ -7,6 +7,7 @@ import serial
 import numpy as np
 import argparse
 import time
+import os
 
 ####################### settings ###########################################
 arduino_serial_port = '/dev/ttyACM0'
@@ -118,6 +119,7 @@ def main():
     parser.add_argument('-l', '--line', help='interprets a single line of GCode')
     parser.add_argument('-f', '--file', help='interprets a GCode File')
     args = parser.parse_args()
+    os.system('stty -F {:s} -hupcl'.format(arduino_serial_port))
     ser = serial.Serial(arduino_serial_port, arduino_serial_baudrate, timeout=1)
     res = b''
     while not res == b'R':
