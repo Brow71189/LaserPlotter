@@ -26,9 +26,11 @@ ser = None
 
 def execute_move(steps):
     global ser
+    ser.reset_input_buffer()
     ser.write(b'R')
     res = ser.readline().strip()
     if res != b'R':
+        print(res)
         raise RuntimeError('Engraver not ready.')
     counter = 0
     while counter < len(steps):
@@ -120,12 +122,13 @@ def main():
     parser.add_argument('-f', '--file', help='interprets a GCode File')
     args = parser.parse_args()
     os.system('stty -F {:s} -hupcl'.format(arduino_serial_port))
-    ser = serial.Serial(arduino_serial_port, arduino_serial_baudrate, timeout=1)
+    ser = serial.Serial(arduino_serial_port, arduino_serial_baudrate, timeout=0.1)
     res = b''
+    ser.reset_input_buffer()
     while not res == b'R':
         ser.write(b'R')
         res = ser.readline().strip()
-        
+    ser.reset_input_buffer()
     ser.write(b'V0\n')
     res = ser.readline().strip()
     if res != b'D':
