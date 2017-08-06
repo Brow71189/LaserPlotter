@@ -3,10 +3,11 @@ volatile long counterB = 0;
 long target = 0;
 char motor;
 int not_moved = 0;
-byte MotorAPin1 = 7;
-byte MotorAPin2 = 8;
-byte MotorBPin1 = 9;
-byte MotorBPin2 = 10;
+short* MotorBank = &PORTB;
+byte MotorAPin1 = 8;
+byte MotorAPin2 = 9;
+byte MotorBPin1 = 10;
+byte MotorBPin2 = 11;
 byte InterruptPinA = 2;
 byte InterruptPinB = 3;
 byte MotorPinState = 15; //This is meant to store all motor pin states. Bit 1 and 2 are Motor A pin one and 2, 3 and 4 are Motor B pin 1 and 2
@@ -18,6 +19,12 @@ void setup()
   pinMode(MotorAPin2, OUTPUT);
   pinMode(MotorBPin1, OUTPUT);
   pinMode(MotorBPin2, OUTPUT);
+  if (*MotorBank == PORTB) {
+    MotorAPin1 -= 7;
+    MotorAPin2 -= 7;
+    MotorBPin1 -= 7;
+    MotorBPin2 -= 7;
+  }
   attachInterrupt(digitalPinToInterrupt(InterruptPinA), countA, RISING);
   attachInterrupt(digitalPinToInterrupt(InterruptPinB), countB, CHANGE);
   Serial.begin(115200);
