@@ -27,21 +27,26 @@ ser = None
 def execute_move(steps):
     global ser
     ser.reset_input_buffer()
+    ser.reset_output_buffer()
     ser.write(b'R')
-    res = ser.readline().strip()
+    res = ser.read()
     if res != b'R':
         print(res)
         raise RuntimeError('Engraver not ready.')
     counter = 0
     while counter < len(steps):
+        #ser.reset_input_buffer()
+        #ser.reset_output_buffer()
         motor, position = steps[counter]
         cmd = bytes('X{:s}{:d}\n'.format(motor_ids[motor], position), 'ASCII')
         print(cmd)
         ser.write(cmd)
-        time.sleep(0.025)
+        #res = ser.readline()
+        #print(res)
         res = ser.read()
+        print(res)
         
-        if res == b'D':
+        if res == b'X':
             counter += 1
         elif res == b'E':
             print('Error executing move. Repeating')
@@ -125,13 +130,13 @@ def main():
     ser = serial.Serial(arduino_serial_port, arduino_serial_baudrate, timeout=0.1)
     res = b''
     ser.reset_input_buffer()
+    ser.reset_output_buffer()
     while not res == b'R':
         ser.write(b'R')
-        res = ser.readline().strip()
-    ser.reset_input_buffer()
+        res = ser.read()
     ser.write(b'V0\n')
-    res = ser.readline().strip()
-    if res != b'D':
+    res = ser.read()
+    if res != b'V':
         print(res)
         raise RuntimeError('Could not set verbosity')
     ser.timeout = 10

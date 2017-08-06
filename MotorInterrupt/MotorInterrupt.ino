@@ -3,7 +3,7 @@ volatile long counterB = 0;
 long target = 0;
 char motor;
 int not_moved = 0;
-short* MotorBank = &PORTB;
+volatile unsigned char* MotorBank = &PORTB;
 byte MotorAPin1 = 8;
 byte MotorAPin2 = 9;
 byte MotorBPin1 = 10;
@@ -20,10 +20,10 @@ void setup()
   pinMode(MotorBPin1, OUTPUT);
   pinMode(MotorBPin2, OUTPUT);
   if (*MotorBank == PORTB) {
-    MotorAPin1 -= 7;
-    MotorAPin2 -= 7;
-    MotorBPin1 -= 7;
-    MotorBPin2 -= 7;
+    MotorAPin1 -= 8;
+    MotorAPin2 -= 8;
+    MotorBPin1 -= 8;
+    MotorBPin2 -= 8;
   }
   attachInterrupt(digitalPinToInterrupt(InterruptPinA), countA, RISING);
   attachInterrupt(digitalPinToInterrupt(InterruptPinB), countB, CHANGE);
@@ -33,9 +33,14 @@ void setup()
 
 void loop()
 { 
+  //delay(500);
   if(Serial.available()) {
     process_line();
-    if (target != 0) move_to(motor, &target);
+    if (target != 0) {
+      char res = move_to(motor, &target);
+      target = 0;
+      Serial.write(res);
+    }
   }
 }
   
@@ -45,10 +50,10 @@ void process_line() {
   switch(cmd) {
     case 'X': while (!Serial.available()) {
                 delay(1);
-              }; 
+              }
               motor = Serial.read(); target = Serial.parseInt(); break;
-    case 'V': verbosity = Serial.parseInt(); Serial.println("D"); break;
-    case 'R': Serial.println("R"); return;
+    case 'V': verbosity = Serial.parseInt(); Serial.write(cmd); return;
+    case 'R': Serial.write(cmd); return;
   }
   if (verbosity > 0) {
     Serial.print(cmd);
@@ -57,9 +62,9 @@ void process_line() {
   }
 }
   
-void move_to(char motor_id, long* target_pos) {
+char move_to(char motor_id, long* target_pos) {
   if (verbosity > 0) {
-    Serial.print("Moving motor "); Serial.print(motor); Serial.print(" to "); Serial.println(*target_pos);
+    Serial.print("Moving motor "); Serial.print(motor_id); Serial.print(" to "); Serial.println(*target_pos);
   }
   long last_difference;
   long difference = 100;
@@ -67,14 +72,13 @@ void move_to(char motor_id, long* target_pos) {
   byte MotorPin1;
   byte MotorPin2;
   byte PinStateShift;
-  switch (motor) {
+  switch (motor_id) {
       case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PinStateShift = 0; break;
       case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PinStateShift = 2; break;
       default: if (verbosity > 0) {
-                 Serial.print("Invalid motor ID: "); Serial.println(motor); return;
-               } else {
-                 Serial.write("E"); return;
+                 Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
+               return 'E';
     }
   while (difference != 0) {
     difference = *counter - *target_pos;
@@ -86,7 +90,7 @@ void move_to(char motor_id, long* target_pos) {
           Serial.print(MotorPinState);
           Serial.println(difference);
         } else {
-          Serial.write("B");
+          Serial.write('B');
         }
         not_moved = 0;
         break;
@@ -96,31 +100,38 @@ void move_to(char motor_id, long* target_pos) {
     }
     if (difference > 0) {
       if ((MotorPinState>>PinStateShift&1) != 1 || (MotorPinState>>PinStateShift&2) != 0) {
-        digitalWrite(MotorPin1, HIGH);
-        digitalWrite(MotorPin2, LOW);
+        //digitalWrite(MotorPin1, HIGH);
+        //digitalWrite(MotorPin2, LOW);
+        *MotorBank |= 1<<MotorPin1;
+        *MotorBank &= ~(1<<MotorPin2);
         MotorPinState |= 1<<PinStateShift;
         MotorPinState &= ~(1 << PinStateShift+1);
       }
     }
     else {
       if ((MotorPinState>>PinStateShift&1) != 0 || (MotorPinState>>PinStateShift&2) != 2) {
-        digitalWrite(MotorPin1, LOW);
-        digitalWrite(MotorPin2, HIGH);
+        //digitalWrite(MotorPin1, LOW);
+        //digitalWrite(MotorPin2, HIGH);
+        *MotorBank |= 1<<MotorPin2;
+        *MotorBank &= ~(1<<MotorPin1);
         MotorPinState |= 1<<PinStateShift+1;
         MotorPinState &= ~(1 << PinStateShift);
       }
     }
     last_difference = difference;
   }
-  digitalWrite(MotorPin1, HIGH);
-  digitalWrite(MotorPin2, HIGH);
+  //digitalWrite(MotorPin1, HIGH);
+  //digitalWrite(MotorPin2, HIGH);
+  *MotorBank |= 1<<MotorPin1;
+  *MotorBank |= 1<<MotorPin2;
   MotorPinState |= 1<<PinStateShift+1;
   MotorPinState |= 1<<PinStateShift;
   if (verbosity > 0) {
     Serial.print("Done "); Serial.print(MotorPinState); Serial.println(*counter);
-  } else {
-    Serial.write("D");
   }
+  //Serial.write(motor_id);
+  //Serial.println(*counter);
+  return 'X';
 }
 
 void countA()
