@@ -12,8 +12,8 @@ import os
 ####################### settings ###########################################
 arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
-y_steps_per_mm = 11.71
-x_steps_per_mm = 333.33
+y_steps_per_mm = 11.77
+x_steps_per_mm = 378.21
 resolution = 150 #dpi
 motor_ids = {
              'x': 'A',

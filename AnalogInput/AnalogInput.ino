@@ -27,9 +27,11 @@
 
  */
 
-int sensorPin = A0;    // select the input pin for the potentiometer
+int sensorPin = A0;
+int sensorPin2 = A1;// select the input pin for the potentiometer
 //int ledPin = 13;      // select the pin for the LED
-int sensorValue = 0;  // variable to store the value coming from the sensor
+int sensorValue = 0; 
+int sensorValue2 = 0;// variable to store the value coming from the sensor
 int MotorPin1 = 7;
 int MotorPin2 = 8;
 int MotorPin1State = 0;
@@ -50,6 +52,7 @@ void setup() {
 void loop() {
   // read the value from the sensor:
   sensorValue = analogRead(sensorPin);
+  sensorValue2 = analogRead(sensorPin2);
 //  if (sensorValue > 200) {
 //    if (lastSensorValue <= 200) {
 //      counter += 1;
@@ -74,7 +77,9 @@ void loop() {
 //    } 
 //  }
   //Serial.println(counter);
-  Serial.println(sensorValue);
+  Serial.print(sensorValue);
+  Serial.print(",");
+  Serial.println(sensorValue2);
   //delay(10);
   // turn the ledPin on
   //digitalWrite(ledPin, HIGH);
