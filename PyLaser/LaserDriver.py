@@ -23,6 +23,8 @@ motor_ids = {
 
 resolution_mm = resolution/25.4
 ser = None
+current_steps_x = 0
+current_steps_y = 0
 
 def execute_move(steps):
     global ser
@@ -59,22 +61,27 @@ def move_linear(target_position, engrave=False):
     target_position : (y, x) coordinates to move to in mm
     engrave : whether to move as fast as possible or to engrave (move slowly)
     """
-    y, x = target_position
-    current_steps_x = 0
-    current_steps_y = 0
-    current_x = 0 # in mm
-    current_y = 0 # in mm
+    global current_steps_x, current_steps_y
     
+    y, x = target_position
+    current_x = current_steps_x / x_steps_per_mm
+    current_y = current_steps_y / y_steps_per_mm
+    x_direction = np.sign(x - current_x)
+    y_direction = np.sign(y - current_y)
+        
     if engrave:
         #x_num_steps = x*x_steps_per_mm
         #y_num_steps = y*y_steps_per_mm
-        x_num_pixels = x*resolution_mm
-        y_num_pixels = y*resolution_mm
+        x_num_pixels = abs((x - current_x)*resolution_mm)
+        y_num_pixels = abs((y - current_y)*resolution_mm)
         print(x_num_pixels, y_num_pixels)
         x_steps_per_pixel = x_steps_per_mm/resolution_mm
         y_steps_per_pixel = y_steps_per_mm/resolution_mm
         print(x_steps_per_pixel, y_steps_per_pixel)
-        pixel_ratio = x_num_pixels / y_num_pixels
+        if y_num_pixels == 0:
+            pixel_ratio = np.inf
+        else:            
+            pixel_ratio = x_num_pixels / y_num_pixels
         print(pixel_ratio)
         x_pixels_moved = 0
         y_pixels_moved = 0
@@ -82,27 +89,49 @@ def move_linear(target_position, engrave=False):
         for i in range(int(np.ceil(x_num_pixels + y_num_pixels))):
             if np.rint(i*pixel_ratio) > x_pixels_moved and x_pixels_moved < x_num_pixels:
                 x_pixels_moved += 1
-                steps.append(('x', int(np.rint((x_pixels_moved)*x_steps_per_pixel))))
+                step = int(np.rint(current_steps_x + x_direction*x_pixels_moved*x_steps_per_pixel))
+                if step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
+                    step = 1
+                steps.append(('x', step))
             if np.rint(i/pixel_ratio) > y_pixels_moved and y_pixels_moved < y_num_pixels:
                 y_pixels_moved += 1
-                steps.append(('y', int(np.rint((y_pixels_moved)*y_steps_per_pixel))))
+                step = int(np.rint(current_steps_y + y_direction*y_pixels_moved*y_steps_per_pixel))
+                if step == 0:
+                    step = 1
+                steps.append(('y', step))
+        current_steps_x = int(np.rint(current_steps_x + x_direction*x_pixels_moved*x_steps_per_pixel))
+        current_steps_y = int(np.rint(current_steps_y + y_direction*y_pixels_moved*y_steps_per_pixel))
     else:
-        steps = [('x', int(np.rint(x*x_steps_per_mm))), ('y', int(np.rint(y*y_steps_per_mm)))]
+        x_step = int(np.rint(x*x_steps_per_mm))
+        y_step = int(np.rint(y*y_steps_per_mm))
+        if x_step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
+            x_step = 1
+        if y_step == 0:
+            y_step = 1
+        steps = [('x', x_step), ('y', y_step)]
+        current_steps_x = x_step
+        current_steps_y = y_step
     
-    #print(steps)
     execute_move(steps)
 
 def parse_line(line):
+    x = y = None
+    comment_start = line.find('(')
+    if comment_start != -1:
+        line = line[:comment_start]
+        
     start_x = line.find('X')
-    end_x = line.find(' ', start_x)
-    if end_x == -1:
-        end_x = None
-    x = float(line[start_x+1:end_x])
+    if start_x != -1:
+        end_x = line.find(' ', start_x)
+        if end_x == -1:
+            end_x = None
+        x = float(line[start_x+1:end_x])
     start_y = line.find('Y')
-    end_y = line.find(' ', start_y)
-    if end_y == -1:
-        end_y = None
-    y = float(line[start_y+1:end_y])
+    if start_y != -1:
+        end_y = line.find(' ', start_y)
+        if end_y == -1:
+            end_y = None
+        y = float(line[start_y+1:end_y])
     return (y, x)
 
 def process_line(line: str):
