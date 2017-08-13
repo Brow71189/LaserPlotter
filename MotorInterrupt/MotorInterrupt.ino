@@ -60,13 +60,13 @@ void process_line() {
               motor = Serial.read(); target = Serial.parseInt(); break;
     case 'V': verbosity = Serial.parseInt(); Serial.write(cmd); return;
     case 'R': Serial.write(cmd); return;
-    case 'G': while (!Serial.available()) {
+    case 'P': while (!Serial.available()) {
                 delay(1);
               }
               char motor_id = Serial.read();
               switch (motor_id) {
-                case 'A': Serial.print(counterA); Serial.write('G'); break;
-                case 'B': Serial.print(counterB); Serial.write('G'); break;
+                case 'A': Serial.print(counterA); Serial.write('P'); break;
+                case 'B': Serial.print(counterB); Serial.write('P'); break;
                 default: if (verbosity > 0) {
                            Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                          }
