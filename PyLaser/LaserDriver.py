@@ -14,7 +14,7 @@ arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
 y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
-resolution = 150 #dpi
+resolution = 50 #dpi
 motor_ids = {
              'x': 'A',
              'y': 'B'
@@ -124,8 +124,8 @@ def move_linear(target_position, engrave=False):
         steps = [('x', x_step), ('y', y_step)]
         current_steps_x = x_step
         current_steps_y = y_step
-    
-    execute_move(steps)
+    print(current_steps_x, current_steps_y)
+    return steps
     
 def move_circular(target_position, center, direction: str):
     """
@@ -140,7 +140,7 @@ def move_circular(target_position, center, direction: str):
     current_y = current_steps_y / y_steps_per_mm
     #x_steps_per_pixel = x_steps_per_mm/resolution_mm
     #y_steps_per_pixel = y_steps_per_mm/resolution_mm
-    radius = np.sqrt((current_x - c_x)**2 + (current_y - c_y))
+    radius = np.sqrt((current_x - c_x)**2 + (current_y - c_y)**2)
     current_angle = np.arctan2(current_y - c_y, current_x - c_x)
     target_angle = np.arctan2(y - c_y, x - c_x)
     angle_delta = target_angle - current_angle
@@ -152,7 +152,6 @@ def move_circular(target_position, center, direction: str):
     print(arc_length)
     total_number_pixels = int(np.rint(arc_length * resolution_mm))
     angle_step = angle_delta/total_number_pixels
-    number_pixels_moved = 0
     x_pixels_moved = 0
     y_pixels_moved = 0
     steps = []
@@ -167,7 +166,6 @@ def move_circular(target_position, center, direction: str):
             steps.append(('x', step))
             last_x = step/x_steps_per_mm
             x_pixels_moved += 1
-            number_pixels_moved += 1
         if abs(c_y + radius*np.sin(current_angle+y_pixels_moved*angle_step) -
                (c_y + radius*np.sin(current_angle+i*angle_step))) > 1/resolution_mm:
             step = int(np.rint((c_y + radius*np.sin(current_angle+i*angle_step)) * y_steps_per_mm))
@@ -176,33 +174,37 @@ def move_circular(target_position, center, direction: str):
             steps.append(('y', step))
             last_y = step/y_steps_per_mm
             y_pixels_moved += 1
-            number_pixels_moved += 1
         if abs(x - last_x) <= 1/resolution_mm and abs(y - last_y) <= 1/resolution_mm:
             break
     current_steps_x = last_x
     current_steps_y = last_y
     
-    execute_move(steps)
+    return steps
 
 def parse_line(line):
-    x = y = None
+    x = y = z = i = j = None
     comment_start = line.find('(')
     if comment_start != -1:
         line = line[:comment_start]
-        
-    start_x = line.find('X')
-    if start_x != -1:
-        end_x = line.find(' ', start_x)
-        if end_x == -1:
-            end_x = None
-        x = float(line[start_x+1:end_x])
-    start_y = line.find('Y')
-    if start_y != -1:
-        end_y = line.find(' ', start_y)
-        if end_y == -1:
-            end_y = None
-        y = float(line[start_y+1:end_y])
-    return (y, x)
+    
+    splitline = line.strip().split()
+    for piece in splitline:
+        if piece.startswith('X'):
+            x = float(piece[1:])
+        elif piece.startswith('Y'):
+            y = float(piece[1:])
+        elif piece.startswith('Z'):
+            z = float(piece[1:])
+        elif piece.startswith('I'):
+            i = float(piece[1:])
+        elif piece.startswith('J'):
+            j = float(piece[1:])
+        else:
+            pass
+    if i is not None or j is not None:
+        return ((y, x), (j, i))
+    else:
+        return (y, x)
 
 def process_line(line: str):
     global current_steps_x, current_steps_y
@@ -211,19 +213,26 @@ def process_line(line: str):
     if line.startswith('G'):
         current_steps_x = get_current_steps('x')
         current_steps_y = get_current_steps('y')
+        
     if line.startswith('G00'):
         position = parse_line(line)
-        move_linear(position, engrave=False)
+        steps = move_linear(position, engrave=False)
+        execute_move(steps)
     elif line.startswith('G01'):
         position = parse_line(line)
-        move_linear(position, engrave=True)
+        steps = move_linear(position, engrave=True)
+        execute_move(steps)
     elif line.startswith('G02'):
         position, center = parse_line(line)
-        move_circular(position, center, 'cw')
+        steps = move_circular(position, center, 'cw')
+        execute_move(steps)
     elif line.startswith('G03'):
         position, center = parse_line(line)
-        move_circular(position, center, 'ccw')
-    
+        steps = move_circular(position, center, 'ccw')
+        execute_move(steps)
+    elif line.startswith('('):
+        # Comments from inkscape Gcodetools are in paranthesis
+        pass
     else:
         print('unrecognized command')
         
