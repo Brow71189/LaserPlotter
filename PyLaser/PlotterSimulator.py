@@ -59,6 +59,7 @@ def execute_move(steps):
                 y = step[1]
                 last_y = y
             p = ax.scatter(x, y)#, 'bo')
+            print(step)
             if counter == 0:
                 fig.canvas.draw()
             #ax.draw_artist(p[0])

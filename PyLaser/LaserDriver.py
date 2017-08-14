@@ -14,7 +14,7 @@ arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
 y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
-resolution = 50 #dpi
+resolution = 10 #dpi
 motor_ids = {
              'x': 'A',
              'y': 'B'
@@ -161,19 +161,25 @@ def move_circular(target_position, center, direction: str):
         if abs(c_x + radius*np.cos(current_angle+x_pixels_moved*angle_step) -
                (c_x + radius*np.cos(current_angle+i*angle_step))) > 1/resolution_mm:
             step = int(np.rint((c_x + radius*np.cos(current_angle+i*angle_step)) * x_steps_per_mm))
+            
+            print(c_x + radius*np.cos(current_angle+x_pixels_moved*angle_step), (c_x + radius*np.cos(current_angle+i*angle_step)))
+            
             if step == 0:
                 step = 1
             steps.append(('x', step))
             last_x = step/x_steps_per_mm
-            x_pixels_moved += 1
+            x_pixels_moved = i
         if abs(c_y + radius*np.sin(current_angle+y_pixels_moved*angle_step) -
                (c_y + radius*np.sin(current_angle+i*angle_step))) > 1/resolution_mm:
             step = int(np.rint((c_y + radius*np.sin(current_angle+i*angle_step)) * y_steps_per_mm))
+            
+            print(c_x + radius*np.cos(current_angle+x_pixels_moved*angle_step), (c_x + radius*np.cos(current_angle+i*angle_step)))
+            
             if step == 0:
                 step = 1
             steps.append(('y', step))
             last_y = step/y_steps_per_mm
-            y_pixels_moved += 1
+            y_pixels_moved = i
         if abs(x - last_x) <= 1/resolution_mm and abs(y - last_y) <= 1/resolution_mm:
             break
     current_steps_x = last_x
