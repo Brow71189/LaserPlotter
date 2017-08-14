@@ -59,7 +59,6 @@ def execute_move(steps):
                 y = step[1]
                 last_y = y
             p = ax.scatter(x, y)#, 'bo')
-            print(step)
             if counter == 0:
                 fig.canvas.draw()
             #ax.draw_artist(p[0])
@@ -106,10 +105,11 @@ def process_line(line: str):
         print('unrecognized command')
         
 def process_file(path: str):
-    raise NotImplementedError
+    with open(path) as gcodefile:
+        for line in gcodefile:
+            process_line(line)
 
-
-def main(line=None):
+def main(line=None, file=None):
     global args
     parser = argparse.ArgumentParser(description='GCode interpreter')
     parser.add_argument('-l', '--line', help='interprets a single line of GCode')
@@ -121,10 +121,13 @@ def main(line=None):
         process_file(args.file)
     if line is not None:
         process_line(line)
+    if file is not None:
+        process_file(file)
         
 if __name__ == '__main__':
-    main('G00 X0 Y30')
-    time.sleep(3)
+    #main('G00 X0 Y30')
+    #time.sleep(3)
     #main('G01 X60 Y60')
     #time.sleep(2)
-    main('G03 X30 Y0 I0 J0')
+    #main('G03 X30 Y0 I0 J0')
+    main(file='C:/Users/Andi/output_0004.ngc')

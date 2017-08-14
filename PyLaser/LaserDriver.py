@@ -14,7 +14,7 @@ arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
 y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
-resolution = 10 #dpi
+resolution = 5 #dpi
 motor_ids = {
              'x': 'A',
              'y': 'B'
@@ -82,6 +82,10 @@ def move_linear(target_position, engrave=False):
     y, x = target_position
     current_x = current_steps_x / x_steps_per_mm
     current_y = current_steps_y / y_steps_per_mm
+    if y is None:
+        y = current_y
+    if x is None:
+        x = current_x
     x_direction = np.sign(x - current_x)
     y_direction = np.sign(y - current_y)
         
@@ -138,6 +142,10 @@ def move_circular(target_position, center, direction: str):
     c_y, c_x = center
     current_x = current_steps_x / x_steps_per_mm
     current_y = current_steps_y / y_steps_per_mm
+    if y is None:
+        y = current_y
+    if x is None:
+        x = current_x
     #x_steps_per_pixel = x_steps_per_mm/resolution_mm
     #y_steps_per_pixel = y_steps_per_mm/resolution_mm
     radius = np.sqrt((current_x - c_x)**2 + (current_y - c_y)**2)
@@ -160,10 +168,7 @@ def move_circular(target_position, center, direction: str):
     for i in range(total_number_pixels):
         if abs(c_x + radius*np.cos(current_angle+x_pixels_moved*angle_step) -
                (c_x + radius*np.cos(current_angle+i*angle_step))) > 1/resolution_mm:
-            step = int(np.rint((c_x + radius*np.cos(current_angle+i*angle_step)) * x_steps_per_mm))
-            
-            print(c_x + radius*np.cos(current_angle+x_pixels_moved*angle_step), (c_x + radius*np.cos(current_angle+i*angle_step)))
-            
+            step = int(np.rint((c_x + radius*np.cos(current_angle+i*angle_step)) * x_steps_per_mm))            
             if step == 0:
                 step = 1
             steps.append(('x', step))
@@ -172,9 +177,6 @@ def move_circular(target_position, center, direction: str):
         if abs(c_y + radius*np.sin(current_angle+y_pixels_moved*angle_step) -
                (c_y + radius*np.sin(current_angle+i*angle_step))) > 1/resolution_mm:
             step = int(np.rint((c_y + radius*np.sin(current_angle+i*angle_step)) * y_steps_per_mm))
-            
-            print(c_x + radius*np.cos(current_angle+x_pixels_moved*angle_step), (c_x + radius*np.cos(current_angle+i*angle_step)))
-            
             if step == 0:
                 step = 1
             steps.append(('y', step))
