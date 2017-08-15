@@ -14,7 +14,7 @@ arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
 y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
-resolution = 5 #dpi
+resolution = 50 #dpi
 motor_ids = {
              'x': 'A',
              'y': 'B'
@@ -92,10 +92,8 @@ def move_linear(target_position, engrave=False):
     if engrave:
         x_num_pixels = abs((x - current_x)*resolution_mm)
         y_num_pixels = abs((y - current_y)*resolution_mm)
-        print(x_num_pixels, y_num_pixels)
         x_steps_per_pixel = x_steps_per_mm/resolution_mm
         y_steps_per_pixel = y_steps_per_mm/resolution_mm
-        print(x_steps_per_pixel, y_steps_per_pixel)
         if y_num_pixels == 0:
             pixel_ratio = np.inf
         else:            
@@ -142,6 +140,8 @@ def move_circular(target_position, center, direction: str):
     c_y, c_x = center
     current_x = current_steps_x / x_steps_per_mm
     current_y = current_steps_y / y_steps_per_mm
+    c_x += current_x
+    c_y += current_y
     if y is None:
         y = current_y
     if x is None:
@@ -157,35 +157,34 @@ def move_circular(target_position, center, direction: str):
     if angle_delta > 0 and direction == 'cw':
         angle_delta -= 2*np.pi
     arc_length = abs(angle_delta*radius)
-    print(arc_length)
     total_number_pixels = int(np.rint(arc_length * resolution_mm))
     angle_step = angle_delta/total_number_pixels
-    x_pixels_moved = 0
-    y_pixels_moved = 0
+#    x_pixels_moved = 0
+#    y_pixels_moved = 0
     steps = []
-    last_x = 0
-    last_y = 0
-    for i in range(total_number_pixels):
-        if abs(c_x + radius*np.cos(current_angle+x_pixels_moved*angle_step) -
-               (c_x + radius*np.cos(current_angle+i*angle_step))) > 1/resolution_mm:
-            step = int(np.rint((c_x + radius*np.cos(current_angle+i*angle_step)) * x_steps_per_mm))            
+    last_x = current_x
+    last_y = current_y
+    for i in np.arange(angle_step, angle_delta+angle_step, angle_step):
+        if np.abs(last_x - (c_x + radius*np.cos(current_angle+i))) > 1/resolution_mm:
+            step = int(np.rint((c_x + radius*np.cos(current_angle+i)) * x_steps_per_mm))            
             if step == 0:
                 step = 1
             steps.append(('x', step))
             last_x = step/x_steps_per_mm
-            x_pixels_moved = i
-        if abs(c_y + radius*np.sin(current_angle+y_pixels_moved*angle_step) -
-               (c_y + radius*np.sin(current_angle+i*angle_step))) > 1/resolution_mm:
-            step = int(np.rint((c_y + radius*np.sin(current_angle+i*angle_step)) * y_steps_per_mm))
+        if np.abs(last_y - (c_y + radius*np.sin(current_angle+i))) > 1/resolution_mm:
+            step = int(np.rint((c_y + radius*np.sin(current_angle+i)) * y_steps_per_mm))
             if step == 0:
                 step = 1
             steps.append(('y', step))
             last_y = step/y_steps_per_mm
-            y_pixels_moved = i
-        if abs(x - last_x) <= 1/resolution_mm and abs(y - last_y) <= 1/resolution_mm:
-            break
-    current_steps_x = last_x
-    current_steps_y = last_y
+#        if abs(x - last_x) <= 1/resolution_mm and abs(y - last_y) <= 1/resolution_mm:
+        #if x_pixels_moved + y_pixels_moved >= total_number_pixels and (abs(x - last_x) <= 1/resolution_mm and
+        #                                                               abs(y - last_y) <= 1/resolution_mm):
+ #           break
+    steps.append(('x', x*x_steps_per_mm))
+    steps.append(('y', y*y_steps_per_mm))
+    current_steps_x = x*x_steps_per_mm
+    current_steps_y = y*y_steps_per_mm
     
     return steps
 
@@ -245,7 +244,9 @@ def process_line(line: str):
         print('unrecognized command')
         
 def process_file(path: str):
-    raise NotImplementedError
+    with open(path) as gcodefile:
+        for line in gcodefile:
+            process_line(line)
 
 def main():
     global ser
