@@ -98,7 +98,7 @@ char move_to(char motor_id, long* target_pos) {
   long brakeThreshold;
   switch (motor_id) {
       case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 100; MinPWMValue = 40; brakeThreshold = 400; break;
-      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 175; MinPWMValue = 120; brakeThreshold = 10; break;
+      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 240; MinPWMValue = 200; brakeThreshold = 20; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
@@ -110,7 +110,7 @@ char move_to(char motor_id, long* target_pos) {
     difference = *counter - *target_pos;
     if (difference == last_difference) {
       not_moved += 1;
-      if (not_moved > 1000) {
+      if (not_moved > 3000) {
         if (verbosity > 0) {
           Serial.print("Motor might be blocked. Stopping. ");
           Serial.println(difference);

@@ -14,7 +14,7 @@ arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
 y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
-resolution = 50 #dpi
+resolution = 150 #dpi
 motor_ids = {
              'x': 'A',
              'y': 'B'
@@ -181,8 +181,8 @@ def move_circular(target_position, center, direction: str):
         #if x_pixels_moved + y_pixels_moved >= total_number_pixels and (abs(x - last_x) <= 1/resolution_mm and
         #                                                               abs(y - last_y) <= 1/resolution_mm):
  #           break
-    steps.append(('x', x*x_steps_per_mm))
-    steps.append(('y', y*y_steps_per_mm))
+    steps.append(('x', int(np.rint(x*x_steps_per_mm))))
+    steps.append(('y', int(np.rint(y*y_steps_per_mm))))
     current_steps_x = x*x_steps_per_mm
     current_steps_y = y*y_steps_per_mm
     
