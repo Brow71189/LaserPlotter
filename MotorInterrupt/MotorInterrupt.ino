@@ -3,12 +3,17 @@ volatile long counterB = 0;
 long target = 0;
 char motor;
 int not_moved = 0;
+float speedA = 300; // in steps per second
+float speedB = 10; // in steps per second
+byte PWMA = 100;
+byte PWMB = 100;
 volatile unsigned char* MotorBank = &PORTB;
 volatile unsigned char* SensorBank = &PIND;
 byte MotorAPin1 = 8;
 byte MotorAPin2 = 9;
 byte MotorBPin1 = 12;
 byte MotorBPin2 = 13;
+bool LaserSate = false;
 const byte InterruptPinA = 2;
 const byte InterruptPinB = 3;
 const byte PWMPinA = 10;
@@ -73,6 +78,31 @@ void process_line() {
                          Serial.write('E'); break;
               }
               return;
+	case 'L': LaserState = (bool)Serial.parseInt(); Serial.write('L');
+	case 'C': while (!Serial.available()) {
+		        delay(1);
+	          }
+			  char motor_id = Serial.read();
+			  switch (motor_id) {
+				  case 'A': counterA = Serial.parseInt();
+				  case 'B': counterB = Serial.parseInt();
+				  default: if (verbosity > 0) {
+					         Serial.print("Invalid motor ID: "); Serial.println(motor_id);
+				           }
+						   Serial.write('E'); break;
+			  }
+	case 'S': while (!Serial.available()) {
+		        delay(1);
+	          }
+			  char motor_id = Serial.read();
+			  switch (motor_id) {
+				  case 'A': speedA = Serial.parseFloat();
+				  case 'B': speedB = Serial.parseFloat();
+				  default: if (verbosity > 0) {
+					         Serial.print("Invalid motor ID: "); Serial.println(motor_id);
+				           }
+						   Serial.write('E'); break;
+			  }
   }
   if (verbosity > 0) {
     Serial.print(cmd);
@@ -92,13 +122,14 @@ char move_to(char motor_id, long* target_pos) {
   byte MotorPin1;
   byte MotorPin2;
   byte PWMPin;
-  byte PWMValue;
+  byte* PWMValue;
   byte MaxPWMValue;
   byte MinPWMValue;
+  float speed;
   long brakeThreshold;
   switch (motor_id) {
-      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 100; MinPWMValue = 40; brakeThreshold = 400; break;
-      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 150; MinPWMValue = 110; brakeThreshold = 400; break;
+      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 100; MinPWMValue = 40; brakeThreshold = 400; speed = speedA; PWMValue = &PWMA; break;
+      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 150; MinPWMValue = 110; brakeThreshold = 400; speed = speedB; PWMValue = &PWMB; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
@@ -106,8 +137,19 @@ char move_to(char motor_id, long* target_pos) {
     }
   float slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
   bool first_move = true;
+  float current_speed = 0;
+  long last_position = *counter;
+  long last_time = micros();
   while (difference != 0) {
     difference = *counter - *target_pos;
+	current_speed = (float) abs(last_position - *counter) / (micros() - last_time);
+	last_time = micros();
+	last_position = *counter;
+	if (current_speed > speed && *PWMValue > MinPWMValue) {
+		*PWMValue--;
+	} else if (current_speed < speed && *PWMValue < MaxPWMValue) {
+		*PWMValue++;
+	}
     if (difference == last_difference) {
       not_moved += 1;
       if (not_moved > 3000) {
@@ -131,18 +173,18 @@ char move_to(char motor_id, long* target_pos) {
         *MotorBank |= 1<<MotorPin2;
         *MotorBank &= ~(1<<MotorPin1);
     }
-    abs_difference = abs(difference); 
-    if (first_move && abs_difference <= brakeThreshold) {
-      brakeThreshold = abs_difference;
-      slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
-      first_move = false;
-    }
-    if (abs_difference < brakeThreshold) {
-      PWMValue = (byte) (slope*(brakeThreshold-abs_difference)+MaxPWMValue);
-    } else {
-      PWMValue = MaxPWMValue;
-    }
-    analogWrite(PWMPin, PWMValue);
+    //abs_difference = abs(difference); 
+    //if (first_move && abs_difference <= brakeThreshold) {
+    //  brakeThreshold = abs_difference;
+    //  slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
+    //  first_move = false;
+    // }
+    //if (abs_difference < brakeThreshold) {
+    //  PWMValue = (byte) (slope*(brakeThreshold-abs_difference)+MaxPWMValue);
+    //} else {
+    //  PWMValue = MaxPWMValue;
+    //}
+    analogWrite(PWMPin, *PWMValue);
     last_difference = difference;
   }
   //digitalWrite(MotorPin1, HIGH);
