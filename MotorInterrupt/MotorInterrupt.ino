@@ -115,7 +115,6 @@ char move_to(char motor_id, long* target_pos) {
   if (verbosity > 0) {
     Serial.print("Moving motor "); Serial.print(motor_id); Serial.print(" to "); Serial.println(*target_pos);
   }
-  long last_difference;
   long difference = 100;
   long abs_difference;
   volatile long* counter;
@@ -141,38 +140,47 @@ char move_to(char motor_id, long* target_pos) {
   long last_position = *counter;
   long last_time = micros();
   while (difference != 0) {
-    difference = *counter - *target_pos;
-	current_speed = (float) abs(last_position - *counter) / (micros() - last_time);
-	last_time = micros();
-	last_position = *counter;
-	if (current_speed > speed && *PWMValue > MinPWMValue) {
-		*PWMValue--;
-	} else if (current_speed < speed && *PWMValue < MaxPWMValue) {
-		*PWMValue++;
-	}
-    if (difference == last_difference) {
+    long now = micros();
+	long current_positon = *counter;
+	difference = current_positon - *target_pos;
+	
+	if (last_position != current_positon || (now - last_time) > 2.0e6/speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
+	  current_speed = (float) abs(last_position - current_positon) / (now - last_time);	
+	  
+	  if (last_position == current_positon) {
       not_moved += 1;
-      if (not_moved > 3000) {
+      if (not_moved > 100) {
         if (verbosity > 0) {
           Serial.print("Motor might be blocked. Stopping. ");
-          Serial.println(difference);
+          Serial.println(*counter);
         } else {
           Serial.write('B');
         }
         not_moved = 0;
         break;
+        }
+      } else {
+        not_moved = 0;
       }
-    } else {
-      not_moved = 0;
-    }
-    if (difference > 0) {
-        *MotorBank |= 1<<MotorPin1;
-        *MotorBank &= ~(1<<MotorPin2);
-    }
-    else {
-        *MotorBank |= 1<<MotorPin2;
-        *MotorBank &= ~(1<<MotorPin1);
-    }
+	  
+	
+	
+	  if (current_speed > speed && *PWMValue > MinPWMValue) {
+		  *PWMValue--;
+	  } else if (current_speed < speed && *PWMValue < MaxPWMValue) {
+		  *PWMValue++;
+	  }
+	
+	
+    
+      if (difference > 0) {
+          *MotorBank |= 1<<MotorPin1;
+          *MotorBank &= ~(1<<MotorPin2);
+      }
+      else {
+          *MotorBank |= 1<<MotorPin2;
+          *MotorBank &= ~(1<<MotorPin1);
+      }
     //abs_difference = abs(difference); 
     //if (first_move && abs_difference <= brakeThreshold) {
     //  brakeThreshold = abs_difference;
@@ -184,7 +192,11 @@ char move_to(char motor_id, long* target_pos) {
     //} else {
     //  PWMValue = MaxPWMValue;
     //}
-    analogWrite(PWMPin, *PWMValue);
+      analogWrite(PWMPin, *PWMValue);
+	  last_time = now;
+	  last_position = current_positon;
+	}
+	
     last_difference = difference;
   }
   //digitalWrite(MotorPin1, HIGH);
