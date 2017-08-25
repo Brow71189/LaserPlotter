@@ -14,6 +14,8 @@ arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
 y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
+y_speed = 1 # in mm/s
+x_speed = 1 # in mm/s
 resolution = 150 #dpi
 motor_ids = {
              'x': 'A',
@@ -242,6 +244,24 @@ def process_line(line: str):
         pass
     else:
         print('unrecognized command')
+        
+def set_speed(motor, speed):
+    motor = motor.lower()
+    if motor == 'x':
+        speed_steps = speed*x_steps_per_mm
+    elif motor == 'y':
+        speed_steps = speed*y_steps_per_mm
+    else:
+        print('Unknown motor id. Must be either "x" or "y"')
+        return
+        
+    cmd = bytes('S{:s}{:d}\n'.format(motor_ids[motor], speed_steps), 'ASCII')
+    ser.write(cmd)
+    res = ser.read()
+    
+    if res != b'S':
+        raise RuntimeError('Unable to set speed for motor {}.'.format(motor))
+    
         
 def process_file(path: str):
     with open(path) as gcodefile:
