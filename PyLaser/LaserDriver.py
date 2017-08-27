@@ -92,32 +92,26 @@ def move_linear(target_position, engrave=False):
     y_direction = np.sign(y - current_y)
         
     if engrave:
-        x_num_pixels = abs((x - current_x)*resolution_mm)
-        y_num_pixels = abs((y - current_y)*resolution_mm)
-        x_steps_per_pixel = x_steps_per_mm/resolution_mm
-        y_steps_per_pixel = y_steps_per_mm/resolution_mm
-        if y_num_pixels == 0:
-            pixel_ratio = np.inf
-        else:            
-            pixel_ratio = x_num_pixels / y_num_pixels
-        x_pixels_moved = 0
-        y_pixels_moved = 0
+        delta_x = x - current_x
+        delta_y = y - current_y
+        line_length = np.sqrt(delta_x**2 + delta_y**2)
+        angle = np.arctan(delta_y, delta_x)
         steps = []
-        for i in range(int(np.ceil(x_num_pixels + y_num_pixels))):
-            if np.rint(i*pixel_ratio) > x_pixels_moved and x_pixels_moved < x_num_pixels:
-                x_pixels_moved += 1
-                step = int(np.rint(current_steps_x + x_direction*x_pixels_moved*x_steps_per_pixel))
-                if step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
+        for i in np.arange(0, line_length+resolution_mm, resolution_mm):
+            if np.abs(i*np.cos(angle)) > resolution_mm:
+                step = int(np.rint(i*np.cos(angle))) + current_steps_x
+                if step == 0:
                     step = 1
                 steps.append(('x', step))
-            if np.rint(np.divide(i, pixel_ratio)) > y_pixels_moved and y_pixels_moved < y_num_pixels:
-                y_pixels_moved += 1
-                step = int(np.rint(current_steps_y + y_direction*y_pixels_moved*y_steps_per_pixel))
+            if np.abs(i*np.sin(angle)) > resolution_mm:
+                step = int(np.rint(i*np.sin(angle))) + current_steps_y
                 if step == 0:
                     step = 1
                 steps.append(('y', step))
-        current_steps_x = int(np.rint(current_steps_x + x_direction*x_pixels_moved*x_steps_per_pixel))
-        current_steps_y = int(np.rint(current_steps_y + y_direction*y_pixels_moved*y_steps_per_pixel))
+        steps.append(('x', int(np.rint(x*x_steps_per_mm))))
+        steps.append(('y', int(np.rint(y*y_steps_per_mm))))
+        current_steps_x = x*x_steps_per_mm
+        current_steps_y = y*y_steps_per_mm
     else:
         x_step = int(np.rint(x*x_steps_per_mm))
         y_step = int(np.rint(y*y_steps_per_mm))
