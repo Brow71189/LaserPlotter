@@ -24,15 +24,17 @@ def execute_move(steps):
     
     for step in steps:
         if step[0] == 'x':
-            if step[1] > max_x:
-                max_x = step[1]
-            if step[1] < min_x:
-                min_x = step[1]
+            step_mm = step[1]/LaserDriver.x_steps_per_mm
+            if step_mm > max_x:
+                max_x = step_mm
+            if step_mm < min_x:
+                min_x = step_mm
         if step[0] == 'y':
-            if step[1] > max_y:
-                max_y = step[1]
-            if step[1] < min_y:
-                min_y = step[1]
+            step_mm = step[1]/LaserDriver.y_steps_per_mm
+            if step_mm > max_y:
+                max_y = step_mm
+            if step_mm < min_y:
+                min_y = step_mm
     if fig is None:
         fig  = plt.figure()
         
@@ -51,12 +53,14 @@ def execute_move(steps):
             step = steps[counter]
             x = y = 0
             if step[0] == 'x':
-                x = step[1]
+                step_mm = step[1]/LaserDriver.x_steps_per_mm
+                x = step_mm
                 y = last_y
                 last_x = x
             if step[0] == 'y':
+                step_mm = step[1]/LaserDriver.y_steps_per_mm
                 x = last_x
-                y = step[1]
+                y = step_mm
                 last_y = y
             p = ax.scatter(x, y)#, 'bo')
             if counter == 0:
@@ -127,9 +131,9 @@ def main(line=None, file=None):
 if __name__ == '__main__':
     #main('G00 X0 Y30')
     #time.sleep(3)
-    #main('G01 X60 Y60')
-    #time.sleep(2)
-    #main('G03 X30 Y0 I0 J0')
+    main('G01 X60 Y60')
+    time.sleep(2)
+    main('G02 X60 Y0 I-30 J-30')
     #main('G00 X67.582181 Y265.710450')
     #time.sleep(2)
     #main('G02 X66.273540 Y259.131469 Z-0.125000 I-17.191706 J0.000001 F400.000000')
@@ -137,4 +141,4 @@ if __name__ == '__main__':
     #main('G02 X62.546846 Y253.554078 Z-0.125000 I-15.883065 J6.578982')
     #time.sleep(2)
     #main('G02 X56.969455 Y249.827385 Z-0.125000 I-12.156371 J12.156373')
-    main(file='/home/andi/output_0018.ngc')
+    #main(file='/home/andi/output_0020.ngc')

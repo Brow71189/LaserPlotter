@@ -16,7 +16,7 @@ y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
 y_speed = 1 # in mm/s
 x_speed = 1 # in mm/s
-resolution = 150 #dpi
+resolution = 50 #dpi
 motor_ids = {
              'x': 'A',
              'y': 'B'
@@ -88,26 +88,30 @@ def move_linear(target_position, engrave=False):
         y = current_y
     if x is None:
         x = current_x
-    x_direction = np.sign(x - current_x)
-    y_direction = np.sign(y - current_y)
+    #x_direction = np.sign(x - current_x)
+    #y_direction = np.sign(y - current_y)
         
     if engrave:
         delta_x = x - current_x
         delta_y = y - current_y
         line_length = np.sqrt(delta_x**2 + delta_y**2)
-        angle = np.arctan(delta_y, delta_x)
+        angle = np.arctan2(delta_y, delta_x)
         steps = []
-        for i in np.arange(0, line_length+resolution_mm, resolution_mm):
-            if np.abs(i*np.cos(angle)) > resolution_mm:
-                step = int(np.rint(i*np.cos(angle))) + current_steps_x
+        last_x = 0
+        last_y = 0
+        for i in np.arange(0, line_length+1/resolution_mm, 1/resolution_mm):
+            if np.abs(last_x - i*np.cos(angle)) > 1/resolution_mm:
+                step = int(np.rint(i*np.cos(angle) * x_steps_per_mm)) + current_steps_x
                 if step == 0:
                     step = 1
                 steps.append(('x', step))
-            if np.abs(i*np.sin(angle)) > resolution_mm:
-                step = int(np.rint(i*np.sin(angle))) + current_steps_y
+                last_x = i*np.cos(angle)
+            if np.abs(last_y - i*np.sin(angle)) > 1/resolution_mm:
+                step = int(np.rint(i*np.sin(angle) * y_steps_per_mm)) + current_steps_y
                 if step == 0:
                     step = 1
                 steps.append(('y', step))
+                last_y = i*np.sin(angle)
         steps.append(('x', int(np.rint(x*x_steps_per_mm))))
         steps.append(('y', int(np.rint(y*y_steps_per_mm))))
         current_steps_x = x*x_steps_per_mm
