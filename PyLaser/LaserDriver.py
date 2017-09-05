@@ -55,6 +55,8 @@ def execute_move(steps):
         elif res == b'E':
             print('Error executing move. Repeating')
             #raise RuntimeError('Error executing move')
+        elif res == b'B':
+            raise RuntimeError('{:s}-Motor might be blocked'.format(motor))
         else:
             raise RuntimeError('Unknown return code from engraver: {:s}'.format(res.decode('ASCII')))
 
