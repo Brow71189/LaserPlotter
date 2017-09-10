@@ -56,9 +56,9 @@ def execute_move(steps):
             print('Error executing move. Repeating')
             #raise RuntimeError('Error executing move')
         elif res == b'B':
-            raise RuntimeError('{:s}-Motor might be blocked'.format(motor))
+            raise RuntimeError('{:s}-Motor might be blocked'.format(motor), counter)
         else:
-            raise RuntimeError('Unknown return code from engraver: {:s}'.format(res.decode('ASCII')))
+            raise RuntimeError('Unknown return code from engraver: {:s}'.format(res.decode('ASCII')), counter)
 
 def get_current_steps(motor):
     global ser
@@ -83,7 +83,12 @@ def move_linear(target_position, engrave=False):
     """
     global current_steps_x, current_steps_y
     
-    y, x = target_position
+    x = y = z = None
+    
+    if len(target_position) == 3:
+        z, y, x = target_position
+    else:
+        y, x = target_position
     current_x = current_steps_x / x_steps_per_mm
     current_y = current_steps_y / y_steps_per_mm
     if y is None:
@@ -136,9 +141,17 @@ def move_circular(target_position, center, direction: str):
     direction must be a string, either 'cw' or 'ccw' for clockwise or counter-clockwise movement
     """
     global current_steps_x, current_steps_y
+    
+    x = y = z = None
+    
     direction = direction.lower()
     assert direction in ['cw', 'ccw']
-    y, x = target_position
+    
+    if len(target_position) == 3:
+        z, y, x = target_position
+    else:
+        y, x = target_position
+        
     c_y, c_x = center
     current_x = current_steps_x / x_steps_per_mm
     current_y = current_steps_y / y_steps_per_mm
@@ -211,9 +224,15 @@ def parse_line(line):
         else:
             pass
     if i is not None or j is not None:
-        return ((y, x), (j, i))
+        if z is not None:
+            return ((z, y, x), (j, i))
+        else:        
+            return ((y, x), (j, i))
     else:
-        return (y, x)
+        if z is not None:
+            return (z, y, x)
+        else:
+            return (y, x)
 
 def process_line(line: str):
     global current_steps_x, current_steps_y
@@ -267,6 +286,15 @@ def process_file(path: str):
     with open(path) as gcodefile:
         for line in gcodefile:
             process_line(line)
+
+def send_raw(raw_command: str):
+    command = bytes(raw_command)
+    ser.write(command)
+    res = (ser.read()).decode()
+    num_bytes = ser.in_waiting
+    if num_bytes > 0:
+        res += (ser.read(num_bytes)).decode()
+    return res
 
 def main():
     global ser
