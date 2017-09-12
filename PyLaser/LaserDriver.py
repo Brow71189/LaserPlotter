@@ -25,6 +25,7 @@ motor_ids = {
 
 resolution_mm = resolution/25.4
 ser = None
+standalone_mode = False
 current_steps_x = 0
 current_steps_y = 0
 
@@ -320,8 +321,14 @@ def main():
         process_line(args.line)
     elif args.file is not None:
         process_file(args.file)
+    if not standalone_mode:
+        close()
+
+def close():
+    global ser
     if ser is not None:
         ser.close()
+        ser = None
 
 def calc_arc(steps):
     x_l = []
@@ -348,4 +355,5 @@ def calc_arc(steps):
     return x_l, y_l
     
 if __name__ == '__main__':
+    standalone_mode = True
     main()

@@ -34,8 +34,19 @@ class LaserGUI(object):
         default_padx = 5
         default_pady = 2
         
-        description_label = tk.Label(self.root, text="Hello, world!", font=default_font)
-        description_label.grid(column=0, row=0)
+        def connect_button_clicked():
+            info_label['text'] = ''
+            if connect_button['text'] == 'Connect to plotter':
+                try:
+                    LaserDriver.main()
+                except Exception as e:
+                    self.info_label['text'] = str(e)
+                    return
+                else:
+                    connect_button['text'] = 'Disconnect'
+            elif connect_button['text'] == 'Disconnect':
+                LaserDriver.close()
+                self.info_label['text'] = 'Connect to plotter'
 
         def open_button_clicked():
             filename = ''
@@ -119,6 +130,8 @@ class LaserGUI(object):
         raw_entry = tk.Entry(self.root, font=default_font)
         raw_entry.grid(column=1, row=1, padx=default_padx, pady=default_pady)
         # Other elements
+        connect_button = tk.Button(self.root, text='Connect to plotter', command=connect_button_clicked, font=default_font)
+        connect_button.grid(column=0, row=0, padx=default_padx, pady=default_pady)
         self.start_button = tk.Button(self.root, text='Start plot', command=start_button_clicked, font=default_font)
         self.start_button.grid(column=3, row=2, padx=default_padx, pady=default_pady)
         self.abort_button = tk.Button(self.root, text='Abort plot', command=abort_button_clicked, font=default_font)
