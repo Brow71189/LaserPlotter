@@ -11,6 +11,7 @@ from tkinter import filedialog
 import LaserDriver
 import os
 import threading
+import numpy as np
 
 class LaserGUI(object):
     def __init__(self):
@@ -20,10 +21,12 @@ class LaserGUI(object):
         self.mode = None
         self._file = None
         self.info_label = None
+        self.simulator_canvas = None
         self.steps = None
         self._abort_move = False
         self._current_counter = 0
         self._thread = None
+        self.do_simulation = False
 
     def create_gui(self):
         self.root = tk.Tk()
@@ -111,11 +114,15 @@ class LaserGUI(object):
             elif self.mode.get() == 'raw':
                 raw_descriptor.grid()
                 raw_entry.grid()
+        
+        def simulate_button_clicked():
+            self.do_simulation = True
+            start_button_clicked()
             
         # Elements for "file" mode
-        current_file_text = tk.Label(self.root, text='Current file:', font=default_font)
+        current_file_text = tk.Label(self.root, text='Current file:', font=default_font, anchor=tk.W)
         current_file_text.grid(column=0, row=1, padx=default_padx, pady=default_pady)
-        current_file_name = tk.Label(self.root, text='/home/Andi/test.ngc', font=file_name_font)
+        current_file_name = tk.Label(self.root, text='/home/Andi/test.ngc', font=file_name_font, anchor=tk.W)
         current_file_name.grid(column=1, row=1, padx=default_padx, pady=default_pady)
         open_button = tk.Button(self.root, text='Open Gcode file', command=open_button_clicked, font=default_font)
         open_button.grid(column=3, row=1, padx=default_padx, pady=default_pady)
@@ -147,6 +154,13 @@ class LaserGUI(object):
         info_label = tk.Label(self.root, font=default_font, anchor=tk.W)
         info_label.grid(column=0, row=3, columnspan=3, padx=default_padx, pady=default_pady)
         self.info_label = info_label
+        #simulator canvas
+        self.simulator_canvas = tk.Canvas(self.root, height=100, width=100, bg='white')
+        self.simulator_canvas.grid(column=4, row=1, rowspan=3)
+        simulate_button = tk.Button(self.root, text='Simulate', command=simulate_button_clicked, font=default_font)
+        simulate_button.grid(column=4, row=0, padx=default_padx, pady=default_pady)
+        #oval = self.simulator_canvas.create_oval(10, 30, 40, 50)
+        
         
         self.root.mainloop()
         
@@ -169,13 +183,12 @@ class LaserGUI(object):
         self._current_line = None
     
     def process_line(self, line):
-        global current_steps_x, current_steps_y
         self.info_label['text'] = ''
         line = line.upper()
         line = line.strip()
-        if line.startswith('G'):
-            current_steps_x = LaserDriver.get_current_steps('x')
-            current_steps_y = LaserDriver.get_current_steps('y')
+        if line.startswith('G') and not self.do_simulation:
+            LaserDriver.current_steps_x = LaserDriver.get_current_steps('x')
+            LaserDriver.current_steps_y = LaserDriver.get_current_steps('y')
         
         if line.startswith('G00'):
             position = LaserDriver.parse_line(line)
@@ -196,7 +209,10 @@ class LaserGUI(object):
             print('unrecognized command')
         
         try:
-            self.execute_move()
+            if self.do_simulation:
+                self.execute_simulation_move()
+            else:
+                self.execute_move()
         except RuntimeError:
             pass
     
@@ -220,6 +236,49 @@ class LaserGUI(object):
                 self._current_counter = 0
                 self.start_button['text'] = 'Start plot'
                 self.start_button.config(state=tk.NORMAL)
+    
+    def execute_simulation_move(self):
+        min_x = min_y = np.inf
+        max_x = max_y = -np.inf
+        if self.steps is not None:
+            for step in self.steps:
+                if step[0] == 'x':
+                    step_mm = step[1]/LaserDriver.x_steps_per_mm
+                    if step_mm > max_x:
+                        max_x = step_mm
+                    if step_mm < min_x:
+                        min_x = step_mm
+                if step[0] == 'y':
+                    step_mm = step[1]/LaserDriver.y_steps_per_mm
+                    if step_mm > max_y:
+                        max_y = step_mm
+                    if step_mm < min_y:
+                        min_y = step_mm
+                        
+            last_x = LaserDriver.current_steps_x
+            last_y = LaserDriver.current_steps_y
+            counter = 0
+            while True:
+                if counter >= len(self.steps):
+                    break
+                else:
+                    step = self.steps[counter]
+                    x = y = 0
+                    if step[0] == 'x':
+                        step_mm = step[1]/LaserDriver.x_steps_per_mm
+                        x = step_mm
+                        y = last_y
+                        last_x = x
+                    if step[0] == 'y':
+                        step_mm = step[1]/LaserDriver.y_steps_per_mm
+                        x = last_x
+                        y = step_mm
+                        last_y = y
+                    self.simulator_canvas.create_oval(x-1, y-1, x+1, y+1, fill='black')
+                counter += 1
+                #fig.canvas.draw()
+                #fig.canvas.flush_events()
+                #plt.pause(0.1)
                 
 if __name__ == '__main__':
     GUI = LaserGUI()    
