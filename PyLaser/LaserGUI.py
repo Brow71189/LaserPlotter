@@ -21,6 +21,9 @@ class LaserGUI(object):
         self.mode = None
         self._file = None
         self.info_label = None
+        self.start_button = None
+        self.abort_button = None
+        self.connect_button = None
         self.simulator_canvas = None
         self.steps = None
         self._abort_move = False
@@ -39,15 +42,15 @@ class LaserGUI(object):
         
         def connect_button_clicked():
             info_label['text'] = ''
-            if connect_button['text'] == 'Connect to plotter':
+            if self.connect_button['text'] == 'Connect to plotter':
                 try:
                     LaserDriver.main()
                 except Exception as e:
                     self.info_label['text'] = str(e)
                     return
                 else:
-                    connect_button['text'] = 'Disconnect'
-            elif connect_button['text'] == 'Disconnect':
+                    self.connect_button['text'] = 'Disconnect'
+            elif self.connect_button['text'] == 'Disconnect':
                 LaserDriver.close()
                 self.info_label['text'] = 'Connect to plotter'
 
@@ -85,6 +88,7 @@ class LaserGUI(object):
                 
             self.abort_button.config(state=tk.NORMAL)
             self.start_button.config(state=tk.DISABLED)
+            self.connect_button.config(state=tk.DISABLED)
                 
         def abort_button_clicked():
             self._abort_move = True
@@ -118,6 +122,11 @@ class LaserGUI(object):
         def simulate_button_clicked():
             self.do_simulation = True
             start_button_clicked()
+        
+        def clear_button_clicked():
+            self.simulator_canvas.delete(tk.ALL)
+            LaserDriver.current_steps_x = 0
+            LaserDriver.current_steps_y = 0
             
         # Elements for "file" mode
         current_file_text = tk.Label(self.root, text='Current file:', font=default_font, anchor=tk.W)
@@ -137,12 +146,13 @@ class LaserGUI(object):
         raw_entry = tk.Entry(self.root, font=default_font)
         raw_entry.grid(column=1, row=1, padx=default_padx, pady=default_pady)
         # Other elements
-        connect_button = tk.Button(self.root, text='Connect to plotter', command=connect_button_clicked, font=default_font)
-        connect_button.grid(column=0, row=0, padx=default_padx, pady=default_pady)
+        self.connect_button = tk.Button(self.root, text='Connect to plotter', command=connect_button_clicked, font=default_font)
+        self.connect_button.grid(column=0, row=0, padx=default_padx, pady=default_pady)
         self.start_button = tk.Button(self.root, text='Start plot', command=start_button_clicked, font=default_font)
         self.start_button.grid(column=3, row=2, padx=default_padx, pady=default_pady)
         self.abort_button = tk.Button(self.root, text='Abort plot', command=abort_button_clicked, font=default_font)
         self.abort_button.grid(column=2, row=2, padx=default_padx, pady=default_pady)
+        self.abort_button.config(state=tk.DISABLED)
         mode_options = ('file', 'line', 'raw')
         self.mode = tk.StringVar()
         self.mode.trace('w', mode_changed)
@@ -155,10 +165,12 @@ class LaserGUI(object):
         info_label.grid(column=0, row=3, columnspan=3, padx=default_padx, pady=default_pady)
         self.info_label = info_label
         #simulator canvas
-        self.simulator_canvas = tk.Canvas(self.root, height=100, width=100, bg='white')
-        self.simulator_canvas.grid(column=4, row=1, rowspan=3)
+        self.simulator_canvas = tk.Canvas(self.root, height=200, width=200, bg='white')
+        self.simulator_canvas.grid(column=4, row=1, rowspan=3, columnspan=2)
         simulate_button = tk.Button(self.root, text='Simulate', command=simulate_button_clicked, font=default_font)
         simulate_button.grid(column=4, row=0, padx=default_padx, pady=default_pady)
+        clear_button = tk.Button(self.root, text='Clear', command=clear_button_clicked, font=default_font)
+        clear_button.grid(column=5, row=0, padx=default_padx, pady=default_pady)
         #oval = self.simulator_canvas.create_oval(10, 30, 40, 50)
         
         
@@ -179,8 +191,10 @@ class LaserGUI(object):
             try:
                 self.process_line(line)
             except RuntimeError:
+                self.finish()                
                 return
         self._current_line = None
+        self.finish()
     
     def process_line(self, line):
         self.info_label['text'] = ''
@@ -215,10 +229,14 @@ class LaserGUI(object):
                 self.execute_move()
         except RuntimeError:
             pass
+        finally:
+            if self.mode.get() == 'line':
+                self.finish()
     
     def process_raw(self, raw):
         res = LaserDriver.send_raw(raw)
         self.info_label['text'] = res
+        self.finish()
     
     def execute_move(self):
         if self.steps is not None:
@@ -276,9 +294,13 @@ class LaserGUI(object):
                         last_y = y
                     self.simulator_canvas.create_oval(x-1, y-1, x+1, y+1, fill='black')
                 counter += 1
-                #fig.canvas.draw()
-                #fig.canvas.flush_events()
-                #plt.pause(0.1)
+
+    def finish(self):
+        self.start_button.config(state=tk.NORMAL)
+        self.abort_button.config(state=tk.DISABLED)
+        self.connect_button.config(state=tk.NORMAL)
+        self.do_simulation = False
+        self._abort_move = False
                 
 if __name__ == '__main__':
     GUI = LaserGUI()    
