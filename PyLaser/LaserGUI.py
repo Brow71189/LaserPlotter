@@ -38,7 +38,7 @@ class LaserGUI(object):
         file_name_font = font.Font(slant='italic')
         # Spacing definitions
         default_padx = 5
-        default_pady = 2
+        default_pady = 3
         
         def connect_button_clicked():
             info_label['text'] = ''
@@ -53,6 +53,37 @@ class LaserGUI(object):
             elif self.connect_button['text'] == 'Disconnect':
                 LaserDriver.close()
                 self.info_label['text'] = 'Connect to plotter'
+                
+        def settings_button_clicked():
+            def resolution_changed(*args):
+                if len(resolution.get()) > 0 and resolution.get() != str(LaserDriver.resolution):
+                    try:
+                        res = int(resolution.get())
+                    except ValueError as e:
+                        self.info_label['text'] = str(e)
+                        resolution.set(str(LaserDriver.resolution))
+                    else:
+                        LaserDriver.resolution = res
+                        
+            def serial_port_changed(*args):
+                if len(serial_port.get()) > 0 and serial_port.get() != LaserDriver.arduino_serial_port:
+                    LaserDriver.arduino_serial_port = serial_port.get()
+                        
+            settings_window = tk.Toplevel(self.root)
+            resolution_label = tk.Label(settings_window, font=default_font, text='Resolution (dpi):', anchor=tk.W)
+            resolution_label.grid(column=0, row=0, padx=default_padx, pady=default_pady, sticky=tk.W)
+            resolution = tk.StringVar()
+            resolution.set(LaserDriver.resolution)
+            resolution.trace('w', resolution_changed)
+            resolution_field = tk.Entry(settings_window, font=default_font, textvariable=resolution, width=4)
+            resolution_field.grid(column=1, row=0, padx=default_padx, pady=default_pady, sticky=tk.W)
+            serial_port_label = tk.Label(settings_window, font=default_font, text='Serial port:', anchor=tk.W)
+            serial_port_label.grid(column=0, row=1, padx=default_padx, pady=default_pady, sticky=tk.W)
+            serial_port = tk.StringVar()
+            serial_port.set(LaserDriver.arduino_serial_port)
+            serial_port.trace('w', serial_port_changed)
+            serial_port_field = tk.Entry(settings_window, font=default_font, textvariable=serial_port, width=12)
+            serial_port_field.grid(column=1, row=1, padx=default_padx, pady=default_pady)
 
         def open_button_clicked():
             filename = ''
@@ -130,16 +161,16 @@ class LaserGUI(object):
             
         # Elements for "file" mode
         current_file_text = tk.Label(self.root, text='Current file:', font=default_font, anchor=tk.W)
-        current_file_text.grid(column=0, row=1, padx=default_padx, pady=default_pady)
+        current_file_text.grid(column=0, row=1, padx=default_padx, pady=default_pady, sticky=tk.W)
         current_file_name = tk.Label(self.root, text='/home/Andi/test.ngc', font=file_name_font, anchor=tk.W)
-        current_file_name.grid(column=1, row=1, padx=default_padx, pady=default_pady)
+        current_file_name.grid(column=1, row=1, columnspan=2, padx=default_padx, pady=default_pady, sticky=tk.W)
         open_button = tk.Button(self.root, text='Open Gcode file', command=open_button_clicked, font=default_font)
         open_button.grid(column=3, row=1, padx=default_padx, pady=default_pady)
         # Elements for "line" mode
         line_descriptor = tk.Label(self.root, text='Gcode line:', font=default_font)
         line_descriptor.grid(column=0, row=1, padx=default_padx, pady=default_pady)
         line_entry = tk.Entry(self.root, font=default_font)
-        line_entry.grid(column=1, row=1, padx=default_padx, pady=default_pady)
+        line_entry.grid(column=1, row=1, padx=default_padx, pady=default_pady, sticky=tk.W)
         # Elements for "raw" mode
         raw_descriptor = tk.Label(self.root, text='Raw movement command:', font=default_font)
         raw_descriptor.grid(column=0, row=1, padx=default_padx, pady=default_pady)
@@ -147,7 +178,9 @@ class LaserGUI(object):
         raw_entry.grid(column=1, row=1, padx=default_padx, pady=default_pady)
         # Other elements
         self.connect_button = tk.Button(self.root, text='Connect to plotter', command=connect_button_clicked, font=default_font)
-        self.connect_button.grid(column=0, row=0, padx=default_padx, pady=default_pady)
+        self.connect_button.grid(column=0, row=0, columnspan=2, padx=default_padx, pady=default_pady, sticky=tk.W)
+        settings_button = tk.Button(self.root, text='Settings...', command=settings_button_clicked, font=default_font)
+        settings_button.grid(column=2, row=0, padx=default_padx, pady=default_pady)
         self.start_button = tk.Button(self.root, text='Start plot', command=start_button_clicked, font=default_font)
         self.start_button.grid(column=3, row=2, padx=default_padx, pady=default_pady)
         self.abort_button = tk.Button(self.root, text='Abort plot', command=abort_button_clicked, font=default_font)
@@ -162,7 +195,7 @@ class LaserGUI(object):
         mode_combo_box.grid(column=0, row=2, padx=default_padx, pady=default_pady)
         #info label
         info_label = tk.Label(self.root, font=default_font, anchor=tk.W)
-        info_label.grid(column=0, row=3, columnspan=3, padx=default_padx, pady=default_pady)
+        info_label.grid(column=0, row=3, columnspan=3, padx=default_padx, pady=default_pady, sticky=tk.W)
         self.info_label = info_label
         #simulator canvas
         self.simulator_canvas = tk.Canvas(self.root, height=200, width=200, bg='white')
@@ -292,7 +325,7 @@ class LaserGUI(object):
                         x = last_x
                         y = step_mm
                         last_y = y
-                    self.simulator_canvas.create_oval(x-1, y-1, x+1, y+1, fill='black')
+                    self.simulator_canvas.create_oval(x-1, 200-y+1, x+1, 200-y-1, fill='black')
                 counter += 1
 
     def finish(self):

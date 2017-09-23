@@ -205,7 +205,8 @@ def move_circular(target_position, center, direction: str):
     return steps
 
 def parse_line(line):
-    x = y = z = i = j = None
+    global x_speed, y_speed
+    x = y = z = i = j = f = None
     comment_start = line.find('(')
     if comment_start != -1:
         line = line[:comment_start]
@@ -222,8 +223,13 @@ def parse_line(line):
             i = float(piece[1:])
         elif piece.startswith('J'):
             j = float(piece[1:])
+        elif piece.startswith('F'):
+            f = float(piece[1:])
         else:
             pass
+    if f is not None:
+        x_speed = f
+        y_speed = f
     if i is not None or j is not None:
         if z is not None:
             return ((z, y, x), (j, i))
