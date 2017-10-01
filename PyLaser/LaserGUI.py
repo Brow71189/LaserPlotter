@@ -55,35 +55,123 @@ class LaserGUI(object):
                 self.info_label['text'] = 'Connect to plotter'
                 
         def settings_button_clicked():
+            self.info_label['text'] = ''
+            
             def resolution_changed(*args):
                 if len(resolution.get()) > 0 and resolution.get() != str(LaserDriver.resolution):
                     try:
                         res = int(resolution.get())
                     except ValueError as e:
                         self.info_label['text'] = str(e)
-                        resolution.set(str(LaserDriver.resolution))
+                        resolution.set(LaserDriver.resolution)
                     else:
                         LaserDriver.resolution = res
                         
             def serial_port_changed(*args):
                 if len(serial_port.get()) > 0 and serial_port.get() != LaserDriver.arduino_serial_port:
                     LaserDriver.arduino_serial_port = serial_port.get()
+            
+            def serial_baudrate_changed(*args):
+                if len(serial_baudrate.get()) > 0 and serial_baudrate.get() != str(LaserDriver.arduino_serial_baudrate):
+                    try:
+                        res = int(serial_baudrate.get())
+                    except ValueError as e:
+                        self.info_label['text'] = str(e)
+                        serial_baudrate.set(LaserDriver.arduino_serial_baudrate)
+                    else:
+                        LaserDriver.arduino_serial_port = res
+            
+            def steps_x_per_mm_changed(*args):
+                if len(x_steps_per_mm.get()) > 0 and x_steps_per_mm.get() != str(LaserDriver.x_steps_per_mm):
+                    try:
+                        res = float(x_steps_per_mm.get())
+                    except ValueError as e:
+                        self.info_label['text'] = str(e)
+                        x_steps_per_mm.set(LaserDriver.x_steps_per_mm)
+                    else:
+                        LaserDriver.x_steps_per_mm = res
+            
+            def steps_y_per_mm_changed(*args):
+                if len(y_steps_per_mm.get()) > 0 and y_steps_per_mm.get() != str(LaserDriver.y_steps_per_mm):
+                    try:
+                        res = float(y_steps_per_mm.get())
+                    except ValueError as e:
+                        self.info_label['text'] = str(e)
+                        y_steps_per_mm.set(LaserDriver.y_steps_per_mm)
+                    else:
+                        LaserDriver.y_steps_per_mm = res
+            
+            def x_speed_changed(*args):
+                if len(x_speed.get()) > 0 and x_speed.get() != str(LaserDriver.x_speed):
+                    try:
+                        res = float(x_speed.get())
+                    except ValueError as e:
+                        self.info_label['text'] = str(e)
+                        x_speed.set(LaserDriver.x_speed)
+                    else:
+                        LaserDriver.x_speed = res
+            
+            def y_speed_changed(*args):
+                if len(y_speed.get()) > 0 and y_speed.get() != str(LaserDriver.y_speed):
+                    try:
+                        res = float(y_speed.get())
+                    except ValueError as e:
+                        self.info_label['text'] = str(e)
+                        y_speed.set(LaserDriver.y_speed)
+                    else:
+                        LaserDriver.y_speed = res
                         
             settings_window = tk.Toplevel(self.root)
+
             resolution_label = tk.Label(settings_window, font=default_font, text='Resolution (dpi):', anchor=tk.W)
             resolution_label.grid(column=0, row=0, padx=default_padx, pady=default_pady, sticky=tk.W)
             resolution = tk.StringVar()
             resolution.set(LaserDriver.resolution)
             resolution.trace('w', resolution_changed)
             resolution_field = tk.Entry(settings_window, font=default_font, textvariable=resolution, width=4)
-            resolution_field.grid(column=1, row=0, padx=default_padx, pady=default_pady, sticky=tk.W)
+            resolution_field.grid(column=1, row=0, columnspan=2, padx=default_padx, pady=default_pady, sticky=tk.W)
+
             serial_port_label = tk.Label(settings_window, font=default_font, text='Serial port:', anchor=tk.W)
             serial_port_label.grid(column=0, row=1, padx=default_padx, pady=default_pady, sticky=tk.W)
             serial_port = tk.StringVar()
             serial_port.set(LaserDriver.arduino_serial_port)
             serial_port.trace('w', serial_port_changed)
             serial_port_field = tk.Entry(settings_window, font=default_font, textvariable=serial_port, width=12)
-            serial_port_field.grid(column=1, row=1, padx=default_padx, pady=default_pady)
+            serial_port_field.grid(column=1, row=1, columnspan=2, padx=default_padx, pady=default_pady, sticky=tk.W)
+
+            serial_baudrate_label = tk.Label(settings_window, font=default_font, text='Serial baudrate:', anchor=tk.W)
+            serial_baudrate_label.grid(column=0, row=2, pady=default_pady, padx=default_padx, sticky=tk.W)
+            serial_baudrate = tk.StringVar()
+            serial_baudrate.set(LaserDriver.arduino_serial_baudrate)
+            serial_baudrate.trace('w', serial_baudrate_changed)
+            serial_baudrate_field = tk.Entry(settings_window, font=default_font, textvariable=serial_baudrate, width=8)
+            serial_baudrate_field.grid(column=1, row=2, columnspan=2, padx=default_padx, pady=default_pady, sticky=tk.W)
+            
+            steps_per_mm_label = tk.Label(settings_window, font=default_font, text='Steps per mm (x, y):', anchor=tk.W)
+            steps_per_mm_label.grid(column=0, row=3, pady=default_pady, padx=default_padx, sticky=tk.W)
+            x_steps_per_mm = tk.StringVar()
+            y_steps_per_mm = tk.StringVar()
+            x_steps_per_mm.set(LaserDriver.x_steps_per_mm)
+            y_steps_per_mm.set(LaserDriver.y_steps_per_mm)
+            x_steps_per_mm.trace('w', steps_x_per_mm_changed)
+            y_steps_per_mm.trace('w', steps_y_per_mm_changed)
+            x_steps_per_mm_field = tk.Entry(settings_window, font=default_font, textvariable=x_steps_per_mm, width=6)
+            x_steps_per_mm_field.grid(column=1, row=3, padx=default_padx, pady=default_pady, sticky=tk.W)
+            y_steps_per_mm_field = tk.Entry(settings_window, font=default_font, textvariable=y_steps_per_mm, width=6)
+            y_steps_per_mm_field.grid(column=2, row=3, padx=default_padx, pady=default_pady, sticky=tk.W)
+            
+            speed_label = tk.Label(settings_window, font=default_font, text='Speed in mm/s (x, y):', anchor=tk.W)
+            speed_label.grid(column=0, row=4, pady=default_pady, padx=default_padx, sticky=tk.W)
+            x_speed = tk.StringVar()
+            y_speed = tk.StringVar()
+            x_speed.set(LaserDriver.x_speed)
+            y_speed.set(LaserDriver.y_speed)
+            x_speed.trace('w', x_speed_changed)
+            y_speed.trace('w', y_speed_changed)
+            x_speed_field = tk.Entry(settings_window, font=default_font, textvariable=x_speed, width=6)
+            x_speed_field.grid(column=1, row=4, padx=default_padx, pady=default_pady, sticky=tk.W)
+            y_speed_field = tk.Entry(settings_window, font=default_font, textvariable=y_speed, width=6)
+            y_speed_field.grid(column=2, row=4, padx=default_padx, pady=default_pady, sticky=tk.W)
 
         def open_button_clicked():
             filename = ''
@@ -132,6 +220,7 @@ class LaserGUI(object):
                 self._abort_move = False
         
         def mode_changed(*args):
+            self.info_label['text'] = ''
             current_file_text.grid_remove()
             current_file_name.grid_remove()
             open_button.grid_remove()
