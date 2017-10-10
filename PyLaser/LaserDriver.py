@@ -18,8 +18,9 @@ y_speed = 1 # in mm/s
 x_speed = 1 # in mm/s
 resolution = 50 #dpi
 motor_ids = {
-             'x': 'A',
-             'y': 'B'
+             'x': 'XA',
+             'y': 'XB',
+             'z': 'L'
              }
 ############################################################################
 
@@ -43,7 +44,7 @@ def execute_move(steps):
         #ser.reset_input_buffer()
         #ser.reset_output_buffer()
         motor, position = steps[counter]
-        cmd = bytes('X{:s}{:d}\n'.format(motor_ids[motor], position), 'ASCII')
+        cmd = bytes('{:s}{:d}\n'.format(motor_ids[motor], position), 'ASCII')
         print(cmd)
         ser.write(cmd)
         #res = ser.readline()
@@ -52,6 +53,8 @@ def execute_move(steps):
         print(res)
         
         if res == b'X':
+            counter += 1
+        if res == b'L':
             counter += 1
         elif res == b'E':
             print('Error executing move. Repeating')
@@ -98,13 +101,14 @@ def move_linear(target_position, engrave=False):
         x = current_x
     #x_direction = np.sign(x - current_x)
     #y_direction = np.sign(y - current_y)
-        
+    steps = []
+    if z is not None:
+        steps.append(('z', 1 if z < 0 else 0))    
     if engrave:
         delta_x = x - current_x
         delta_y = y - current_y
         line_length = np.sqrt(delta_x**2 + delta_y**2)
         angle = np.arctan2(delta_y, delta_x)
-        steps = []
         last_x = 0
         last_y = 0
         for i in np.arange(0, line_length+1/resolution_mm, 1/resolution_mm):
@@ -131,7 +135,7 @@ def move_linear(target_position, engrave=False):
             x_step = 1
         if y_step == 0:
             y_step = 1
-        steps = [('x', x_step), ('y', y_step)]
+        steps.extend([('x', x_step), ('y', y_step)])
         current_steps_x = x_step
         current_steps_y = y_step
     print(current_steps_x, current_steps_y)
@@ -180,6 +184,8 @@ def move_circular(target_position, center, direction: str):
     steps = []
     last_x = current_x
     last_y = current_y
+    if z is not None:
+        steps.append(('z', 1 if z < 0 else 0))
     for i in np.arange(angle_step, angle_delta+angle_step, angle_step):
         if np.abs(last_x - (c_x + radius*np.cos(current_angle+i))) > 1/resolution_mm:
             step = int(np.rint((c_x + radius*np.cos(current_angle+i)) * x_steps_per_mm))            
