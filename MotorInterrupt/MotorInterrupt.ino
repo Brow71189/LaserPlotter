@@ -3,8 +3,8 @@ volatile long counterB = 0;
 long target = 0;
 char motor;
 int not_moved = 0;
-float speedA = 378.21; // in steps per second
-float speedB = 2.0*11.71; // in steps per second
+float speedA = 10.0*378.21; // in steps per second
+float speedB = 10.0*11.71; // in steps per second
 byte PWMA = 127;
 byte PWMB = 127;
 volatile unsigned long last_timeA = 0;
@@ -18,6 +18,7 @@ byte MotorAPin2 = 9;
 byte MotorBPin1 = 12;
 byte MotorBPin2 = 13;
 bool LaserState = false;
+const byte LaserPin = 7;
 const byte InterruptPinA = 2;
 const byte InterruptPinB = 3;
 const byte PWMPinA = 10;
@@ -32,6 +33,7 @@ void setup()
   pinMode(MotorAPin2, OUTPUT);
   pinMode(MotorBPin1, OUTPUT);
   pinMode(MotorBPin2, OUTPUT);
+  pinMode(LaserPin, OUTPUT);
   pinMode(SensorPinA, INPUT);
   pinMode(SensorPinB, INPUT);
   if (*MotorBank == PORTB) {
@@ -148,6 +150,11 @@ char move_to(char motor_id, long* target_pos) {
   float current_speed = 0;
   long last_position = *counter;
   long last_loop_time = micros();
+  //if (LaserState) {
+  //  *SensorBank |= 1<<LaserPin;
+  //} else {
+  //  *SensorBank &= ~(1<<LaserPin);
+  //}
   while (difference != 0) {
     long now = micros();
 	  long current_position = *counter;
@@ -218,6 +225,7 @@ char move_to(char motor_id, long* target_pos) {
 	
 //    last_difference = difference;
   }
+  //*SensorBank &= ~(1<<LaserPin);
   //digitalWrite(MotorPin1, HIGH);
   //digitalWrite(MotorPin2, HIGH);
   *MotorBank |= 1<<MotorPin1;

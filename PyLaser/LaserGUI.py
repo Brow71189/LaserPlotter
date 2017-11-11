@@ -346,7 +346,7 @@ class LaserGUI(object):
             # Comments from inkscape Gcodetools are in paranthesis
             pass
         else:
-            print('unrecognized command')
+            print('unrecognized command: {}'.format(line))
 
         try:
             if self.do_simulation:

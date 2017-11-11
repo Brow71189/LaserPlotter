@@ -68,7 +68,7 @@ def get_current_steps(motor):
     global ser
     ser.reset_input_buffer()
     line = bytearray()
-    ser.write(b'P' + bytearray(motor_ids[motor], 'ASCII'))
+    ser.write(b'P' + bytearray(motor_ids[motor][1], 'ASCII'))
     while True:
         b = ser.read()
         if not b:
@@ -275,7 +275,7 @@ def process_line(line: str):
         # Comments from inkscape Gcodetools are in paranthesis
         pass
     else:
-        print('unrecognized command')
+         print('unrecognized command: {}'.format(line))
         
 def set_speed(motor, speed):
     motor = motor.lower()
@@ -301,7 +301,7 @@ def process_file(path: str):
             process_line(line)
 
 def send_raw(raw_command: str):
-    command = bytes(raw_command)
+    command = bytes(raw_command, 'ASCII')
     ser.write(command)
     res = (ser.read()).decode()
     num_bytes = ser.in_waiting
@@ -333,7 +333,7 @@ def main():
         process_line(args.line)
     elif args.file is not None:
         process_file(args.file)
-    if not standalone_mode:
+    if standalone_mode:
         close()
 
 def close():
