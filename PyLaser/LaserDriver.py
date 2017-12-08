@@ -45,16 +45,16 @@ def execute_move(steps):
         #ser.reset_output_buffer()
         motor, position = steps[counter]
         cmd = bytes('{:s}{:d}\n'.format(motor_ids[motor], position), 'ASCII')
-        print(cmd)
+        #print(cmd)
         ser.write(cmd)
         #res = ser.readline()
         #print(res)
         res = ser.read()
-        print(res)
+        #print(res)
         
         if res == b'X':
             counter += 1
-        if res == b'L':
+        elif res == b'L':
             counter += 1
         elif res == b'E':
             print('Error executing move. Repeating')
@@ -62,6 +62,7 @@ def execute_move(steps):
         elif res == b'B':
             raise RuntimeError('{:s}-Motor might be blocked'.format(motor), counter)
         else:
+            print(res)
             raise RuntimeError('Unknown return code from engraver: {:s}'.format(res.decode('ASCII')), counter)
 
 def get_current_steps(motor):
@@ -328,7 +329,7 @@ def main():
     if res != b'V':
         print(res)
         raise RuntimeError('Could not set verbosity')
-    ser.timeout = 10
+    ser.timeout = 30
     if args.line is not None:
         process_line(args.line)
     elif args.file is not None:

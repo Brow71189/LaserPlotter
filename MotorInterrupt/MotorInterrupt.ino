@@ -134,18 +134,18 @@ char move_to(char motor_id, long* target_pos) {
   byte MaxPWMValue;
   byte MinPWMValue;
   float target_speed;
-  long brakeThreshold;
+  int blockedThreshold;
   volatile unsigned long* last_time;
   volatile unsigned long* this_time;
   switch (motor_id) {
-      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 255; MinPWMValue = 0; brakeThreshold = 400; target_speed = speedA; PWMValue = &PWMA; last_time = &last_timeA; this_time = &this_timeA; break;
-      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 255; MinPWMValue = 0; brakeThreshold = 400; target_speed = speedB; PWMValue = &PWMB; last_time = &last_timeB; this_time = &this_timeB; break;
+      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 400; target_speed = speedA; PWMValue = &PWMA; last_time = &last_timeA; this_time = &this_timeA; break;
+      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 40; target_speed = speedB; PWMValue = &PWMB; last_time = &last_timeB; this_time = &this_timeB; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
                return 'E';
     }
-  float slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
+  //float slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
   bool first_move = true;
   float current_speed = 0;
   long last_position = *counter;
@@ -173,7 +173,7 @@ char move_to(char motor_id, long* target_pos) {
         if (verbosity > 1) {
           Serial.print("Increasing not moved counter to: "); Serial.println(not_moved);
         }
-        if (not_moved > 20) {
+        if (not_moved > 100) {
           if (verbosity > 0) {
             Serial.print("Motor might be blocked. Stopping. ");
             Serial.println(*counter);
