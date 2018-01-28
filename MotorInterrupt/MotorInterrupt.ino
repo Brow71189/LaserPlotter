@@ -85,33 +85,43 @@ void process_line() {
                          Serial.write('E'); break;
               }
               return;
-	case 'L': LaserState = (bool)Serial.parseInt(); Serial.write('L'); return;
-	case 'C': while (!Serial.available()) {
-		        delay(1);
-	          }
-			  motor_id = Serial.read();
-			  switch (motor_id) {
-				  case 'A': counterA = Serial.parseInt(); Serial.write('C'); break;
-				  case 'B': counterB = Serial.parseInt(); Serial.write('C'); break;
-				  default: if (verbosity > 0) {
-					         Serial.print("Invalid motor ID: "); Serial.println(motor_id);
-				           }
-						   Serial.write('E'); break;
-			  }
-       return;
-	case 'S': while (!Serial.available()) {
-		        delay(1);
-	          }
-			  char motor_id = Serial.read();
-			  switch (motor_id) {
-				  case 'A': speedA = Serial.parseFloat(); Serial.write('S'); break;
-				  case 'B': speedB = Serial.parseFloat(); Serial.write('S'); break;
-				  default: if (verbosity > 0) {
-					         Serial.print("Invalid motor ID: "); Serial.println(motor_id);
-				           }
-						   Serial.write('E'); break;
-			  }
-       return;
+	   case 'L': LaserState = (bool)Serial.parseInt(); Serial.write('L'); return;
+     case 'F': if (digitalRead(LaserPin)) {
+                  digitalWrite(LaserPin, LOW);
+                  Serial.write('0');
+                } else {
+                  digitalWrite(LaserPin, HIGH);
+                  Serial.write('1');
+                }
+                Serial.write('F');
+                return;
+            
+      case 'C': while (!Serial.available()) {
+    		        delay(1);
+    	          }
+    			  motor_id = Serial.read();
+    			  switch (motor_id) {
+    				  case 'A': counterA = Serial.parseInt(); Serial.write('C'); break;
+    				  case 'B': counterB = Serial.parseInt(); Serial.write('C'); break;
+    				  default: if (verbosity > 0) {
+    					         Serial.print("Invalid motor ID: "); Serial.println(motor_id);
+    				           }
+    						   Serial.write('E'); break;
+    			  }
+           return;
+    	 case 'S': while (!Serial.available()) {
+    		        delay(1);
+    	          }
+    			  char motor_id = Serial.read();
+    			  switch (motor_id) {
+    				  case 'A': speedA = Serial.parseFloat(); Serial.write('S'); break;
+    				  case 'B': speedB = Serial.parseFloat(); Serial.write('S'); break;
+    				  default: if (verbosity > 0) {
+    					         Serial.print("Invalid motor ID: "); Serial.println(motor_id);
+    				           }
+    						   Serial.write('E'); break;
+    			  }
+           return;
   }
   if (verbosity > 0) {
     Serial.print(cmd);
@@ -138,8 +148,8 @@ char move_to(char motor_id, long* target_pos) {
   volatile unsigned long* last_time;
   volatile unsigned long* this_time;
   switch (motor_id) {
-      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 400; target_speed = speedA; PWMValue = &PWMA; last_time = &last_timeA; this_time = &this_timeA; break;
-      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 40; target_speed = speedB; PWMValue = &PWMB; last_time = &last_timeB; this_time = &this_timeB; break;
+      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 300; target_speed = speedA; PWMValue = &PWMA; last_time = &last_timeA; this_time = &this_timeA; break;
+      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 24; target_speed = speedB; PWMValue = &PWMB; last_time = &last_timeB; this_time = &this_timeB; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
@@ -147,33 +157,37 @@ char move_to(char motor_id, long* target_pos) {
     }
   //float slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
   bool first_move = true;
-  float current_speed = 0;
+  float current_speed = target_speed;
   long last_position = *counter;
   long last_loop_time = micros();
-  //if (LaserState) {
-  //  *SensorBank |= 1<<LaserPin;
-  //} else {
-  //  *SensorBank &= ~(1<<LaserPin);
-  //}
+  if (LaserState) {
+    //*SensorBank |= 1<<LaserPin;
+    digitalWrite(LaserPin, HIGH);
+  } else {
+    //*SensorBank &= ~(1<<LaserPin);
+    digitalWrite(LaserPin, LOW);
+  }
   while (difference != 0) {
     long now = micros();
 	  long current_position = *counter;
 	  difference = current_position - *target_pos;
   	if (last_position != current_position || (now - last_loop_time) > 2.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
       long time_diff = *this_time - *last_time;
-      if (time_diff != 0) {
+      if (time_diff > 0) {
         current_speed = 1.0 / (float)(time_diff) * 1e6;  
       }
   	  if (verbosity > 1) {
-        Serial.print("Current speed: "); Serial.print(current_speed); Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.println(time_diff);
+        Serial.print("Current speed: "); Serial.print(current_speed); Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.print(time_diff); Serial.write(" "); Serial.println(target_speed);
   	  }
   	  if (last_position == current_position) {
         not_moved += 1;
-        current_speed = 0;
+        if (not_moved > 3) {
+          current_speed = 0;
+        }
         if (verbosity > 1) {
           Serial.print("Increasing not moved counter to: "); Serial.println(not_moved);
         }
-        if (not_moved > 100) {
+        if (not_moved > blockedThreshold) {
           if (verbosity > 0) {
             Serial.print("Motor might be blocked. Stopping. ");
             Serial.println(*counter);
@@ -225,11 +239,16 @@ char move_to(char motor_id, long* target_pos) {
 	
 //    last_difference = difference;
   }
+  digitalWrite(LaserPin, LOW);
   //*SensorBank &= ~(1<<LaserPin);
   //digitalWrite(MotorPin1, HIGH);
   //digitalWrite(MotorPin2, HIGH);
   *MotorBank |= 1<<MotorPin1;
   *MotorBank |= 1<<MotorPin2;
+  last_timeA = 0;
+  this_timeA = 0;
+  last_timeB = 0;
+  this_timeB = 0;
   if (verbosity > 0) {
     delay(500);
     Serial.print("Done "); Serial.println(*counter);

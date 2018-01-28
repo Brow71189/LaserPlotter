@@ -16,7 +16,7 @@ y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
 y_speed = 1 # in mm/s
 x_speed = 1 # in mm/s
-resolution = 50 #dpi
+resolution = 150 #dpi
 motor_ids = {
              'x': 'XA',
              'y': 'XB',
@@ -78,6 +78,7 @@ def get_current_steps(motor):
             raise RuntimeError('Error reading current steps')
         if b == b'P':
             break
+        #if b in [b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9']:
         line += b
     return int(bytes(line).decode())
 
@@ -139,7 +140,7 @@ def move_linear(target_position, engrave=False):
         steps.extend([('x', x_step), ('y', y_step)])
         current_steps_x = x_step
         current_steps_y = y_step
-    print(current_steps_x, current_steps_y)
+    #print(current_steps_x, current_steps_y)
     return steps
     
 def move_circular(target_position, center, direction: str):
@@ -237,6 +238,8 @@ def parse_line(line):
     if f is not None:
         x_speed = f
         y_speed = f
+        set_speed('x', x_speed)
+        set_speed('y', y_speed)
     if i is not None or j is not None:
         if z is not None:
             return ((z, y, x), (j, i))
@@ -272,7 +275,7 @@ def process_line(line: str):
         position, center = parse_line(line)
         steps = move_circular(position, center, 'ccw')
         execute_move(steps)
-    elif line.startswith('('):
+    elif line.startswith('(') or line.startswith('%') or not line:
         # Comments from inkscape Gcodetools are in paranthesis
         pass
     else:
@@ -288,7 +291,7 @@ def set_speed(motor, speed):
         print('Unknown motor id. Must be either "x" or "y"')
         return
         
-    cmd = bytes('S{:s}{:d}\n'.format(motor_ids[motor], speed_steps), 'ASCII')
+    cmd = bytes('S{:s}{:.1f}\n'.format(motor_ids[motor][1], speed_steps), 'ASCII')
     ser.write(cmd)
     res = ser.read()
     

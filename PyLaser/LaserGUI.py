@@ -177,7 +177,7 @@ class LaserGUI(object):
             filename = ''
             info_label['text'] = ''
             while not os.path.isfile(filename):
-                filename = filedialog.askopenfilename()
+                filename = filedialog.askopenfilename(initialdir=os.path.expanduser('~'))
                 if len(filename) == 0:
                     break
             if len(filename) > 0:
@@ -304,7 +304,11 @@ class LaserGUI(object):
 
     def process_file(self):
         if self._current_line is not None:
-            self.process_line(self._current_line)
+            try:
+                self.process_line(self._current_line)
+            except RuntimeError:
+                self.finish()
+                return
 
         for line in self._file:
             if self._abort_move:
@@ -323,6 +327,7 @@ class LaserGUI(object):
         self.finish()
 
     def process_line(self, line):
+        #print(line)
         self.info_label['text'] = ''
         line = line.upper()
         line = line.strip()
@@ -333,6 +338,8 @@ class LaserGUI(object):
         if line.startswith('G00'):
             position = LaserDriver.parse_line(line)
             self.steps = LaserDriver.move_linear(position, engrave=False)
+            LaserDriver.set_speed('x', 20)
+            LaserDriver.set_speed('y', 20)
         elif line.startswith('G01'):
             position = LaserDriver.parse_line(line)
             self.steps = LaserDriver.move_linear(position, engrave=True)
@@ -342,7 +349,7 @@ class LaserGUI(object):
         elif line.startswith('G03'):
             position, center = LaserDriver.parse_line(line)
             self.steps = LaserDriver.move_circular(position, center, 'ccw')
-        elif line.startswith('('):
+        elif line.startswith('(') or line.startswith('%') or not line:
             # Comments from inkscape Gcodetools are in paranthesis
             pass
         else:
@@ -354,7 +361,7 @@ class LaserGUI(object):
             else:
                 self.execute_move()
         except RuntimeError:
-            pass
+            raise
         finally:
             if self.mode.get() == 'line':
                 self.finish()
@@ -425,6 +432,7 @@ class LaserGUI(object):
         self.start_button.config(state=tk.NORMAL)
         self.abort_button.config(state=tk.DISABLED)
         self.connect_button.config(state=tk.NORMAL)
+        LaserDriver.execute_move([('z', 0)])
         self.do_simulation = False
         self._abort_move = False
 
