@@ -118,13 +118,19 @@ def move_linear(target_position, engrave=False):
                 step = int(np.rint(i*np.cos(angle) * x_steps_per_mm)) + current_steps_x
                 if step == 0:
                     step = 1
-                steps.append(('x', step))
+                if len(steps) > 0 and steps[-1][0] == 'x':
+                    steps[-1] = ('x', step)
+                else:
+                    steps.append(('x', step))
                 last_x = i*np.cos(angle)
             if np.abs(last_y - i*np.sin(angle)) > 1/resolution_mm:
                 step = int(np.rint(i*np.sin(angle) * y_steps_per_mm)) + current_steps_y
                 if step == 0:
                     step = 1
-                steps.append(('y', step))
+                if len(steps) > 0 and steps[-1][0] == 'y':
+                    steps[-1] = ('y', step)
+                else:
+                    steps.append(('y', step))
                 last_y = i*np.sin(angle)
         steps.append(('x', int(np.rint(x*x_steps_per_mm))))
         steps.append(('y', int(np.rint(y*y_steps_per_mm))))
