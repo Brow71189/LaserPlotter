@@ -26,6 +26,7 @@ const byte PWMPinB = 11;
 const byte SensorPinA = 4;
 const byte SensorPinB = 5;
 byte verbosity = 1; //0: Only send necessary status messages, 1: Also send information, 2: show debug info
+short last_direction = 0;
 
 void setup()
 {
@@ -50,7 +51,6 @@ void setup()
 
 void loop()
 { 
-  //delay(500);
   if(Serial.available()) {
     process_line();
     if (target != 0) {
@@ -64,16 +64,15 @@ void loop()
 void process_line() {
   char cmd = Serial.read();
   char motor_id;
-  //if(cmd>'Z') cmd-=32;
   switch(cmd) {
     case 'X': while (!Serial.available()) {
-                delay(1);
+                delayMicroseconds(5);
               }
               motor = Serial.read(); target = Serial.parseInt(); break;
     case 'V': verbosity = Serial.parseInt(); Serial.write(cmd); return;
     case 'R': Serial.write(cmd); return;
     case 'P': while (!Serial.available()) {
-                delay(1);
+                delayMicroseconds(5);
               }
               motor_id = Serial.read();
               switch (motor_id) {
@@ -97,7 +96,7 @@ void process_line() {
                 return;
             
       case 'C': while (!Serial.available()) {
-    		        delay(1);
+    		        delayMicroseconds(5);
     	          }
     			  motor_id = Serial.read();
     			  switch (motor_id) {
@@ -110,7 +109,7 @@ void process_line() {
     			  }
            return;
     	 case 'S': while (!Serial.available()) {
-    		        delay(1);
+    		        delayMicroseconds(5);
     	          }
     			  char motor_id = Serial.read();
     			  switch (motor_id) {
@@ -134,9 +133,9 @@ char move_to(char motor_id, long* target_pos) {
   if (verbosity > 0) {
     Serial.print("Moving motor "); Serial.print(motor_id); Serial.print(" to "); Serial.println(*target_pos);
   }
-  long difference = 100;
-  long abs_difference;
+  char return_value = 'X';
   volatile long* counter;
+  int backlashSteps;
   byte MotorPin1;
   byte MotorPin2;
   byte PWMPin;
@@ -148,18 +147,37 @@ char move_to(char motor_id, long* target_pos) {
   volatile unsigned long* last_time;
   volatile unsigned long* this_time;
   switch (motor_id) {
-      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 300; target_speed = speedA; PWMValue = &PWMA; last_time = &last_timeA; this_time = &this_timeA; break;
-      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB; MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 24; target_speed = speedB; PWMValue = &PWMB; last_time = &last_timeB; this_time = &this_timeB; break;
+      case 'A': counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA;
+                MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 300; target_speed = speedA; PWMValue = &PWMA;
+                last_time = &last_timeA; this_time = &this_timeA; backlashSteps = 150; break;
+      case 'B': counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB;
+                MaxPWMValue = 255; MinPWMValue = 0; blockedThreshold = 24; target_speed = speedB; PWMValue = &PWMB;
+                last_time = &last_timeB; this_time = &this_timeB; backlashSteps = 0; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
                return 'E';
     }
   //float slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
-  bool first_move = true;
+  //bool first_move = true;
   float current_speed = target_speed;
+  long difference = *counter - *target_pos;
+  if (last_direction > 0 && difference < 0) {
+    *counter -= backlashSteps;
+  } else if (last_direction < 0 && difference > 0) {
+    *counter += backlashSteps;
+  }
+
+  if (difference < 0) {
+    last_direction = -1;
+  } else if (difference > 0) {
+    last_direction = 1;
+  } else {
+    last_direction = 0;
+  }
+  long current_position = *counter;
   long last_position = *counter;
-  long last_loop_time = micros();
+  unsigned long last_loop_time = micros();
   if (LaserState) {
     //*SensorBank |= 1<<LaserPin;
     digitalWrite(LaserPin, HIGH);
@@ -168,14 +186,13 @@ char move_to(char motor_id, long* target_pos) {
     digitalWrite(LaserPin, LOW);
   }
   while (difference != 0) {
-    long now = micros();
-	  long current_position = *counter;
+    unsigned long now = micros();
+	  current_position = *counter;
 	  difference = current_position - *target_pos;
   	if (last_position != current_position || (now - last_loop_time) > 2.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
-      long time_diff = *this_time - *last_time;
-      if (time_diff > 0) {
-        current_speed = 1.0 / (float)(time_diff) * 1e6;  
-      }
+      unsigned long time_diff = *this_time - *last_time;
+      current_speed = 1.0 / (float)(time_diff) * 1e6;  
+      
   	  if (verbosity > 1) {
         Serial.print("Current speed: "); Serial.print(current_speed); Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.print(time_diff); Serial.write(" "); Serial.println(target_speed);
   	  }
@@ -192,7 +209,7 @@ char move_to(char motor_id, long* target_pos) {
             Serial.print("Motor might be blocked. Stopping. ");
             Serial.println(*counter);
           } else {
-            Serial.write('B');
+            return_value = 'B';
           }
           not_moved = 0;
           break;
@@ -201,15 +218,15 @@ char move_to(char motor_id, long* target_pos) {
           not_moved = 0;
         }
 	  
-	  if ((difference < 0 && (last_position-current_position) > 0) || (difference > 0 && (last_position-current_position) < 0)) {
-      current_speed = 0;
-	  }
-	
-	  if (current_speed > target_speed && *PWMValue > MinPWMValue) {
-		  (*PWMValue)--;
-	  } else if (current_speed < target_speed && *PWMValue < MaxPWMValue) {
-		  (*PWMValue)++;
-	  }
+  	  if ((difference < 0 && (last_position-current_position) > 0) || (difference > 0 && (last_position-current_position) < 0)) {
+        current_speed = 0;
+  	  }
+  	
+  	  if (current_speed > target_speed && *PWMValue > MinPWMValue) {
+  		  (*PWMValue)--;
+  	  } else if (current_speed < target_speed && *PWMValue < MaxPWMValue) {
+  		  (*PWMValue)++;
+  	  }
 	
 	
     
@@ -221,28 +238,12 @@ char move_to(char motor_id, long* target_pos) {
           *MotorBank |= 1<<MotorPin2;
           *MotorBank &= ~(1<<MotorPin1);
       }
-    //abs_difference = abs(difference); 
-    //if (first_move && abs_difference <= brakeThreshold) {
-    //  brakeThreshold = abs_difference;
-    //  slope = (float)(MinPWMValue - MaxPWMValue) / brakeThreshold;
-    //  first_move = false;
-    // }
-    //if (abs_difference < brakeThreshold) {
-    //  PWMValue = (byte) (slope*(brakeThreshold-abs_difference)+MaxPWMValue);
-    //} else {
-    //  PWMValue = MaxPWMValue;
-    //}
-    analogWrite(PWMPin, *PWMValue);
-	  last_loop_time = now;
-	  last_position = current_position;
-	}
-	
-//    last_difference = difference;
+      analogWrite(PWMPin, *PWMValue);
+  	  last_loop_time = now;
+  	  last_position = current_position;
+	  }
   }
   digitalWrite(LaserPin, LOW);
-  //*SensorBank &= ~(1<<LaserPin);
-  //digitalWrite(MotorPin1, HIGH);
-  //digitalWrite(MotorPin2, HIGH);
   *MotorBank |= 1<<MotorPin1;
   *MotorBank |= 1<<MotorPin2;
   last_timeA = 0;
@@ -253,9 +254,59 @@ char move_to(char motor_id, long* target_pos) {
     delay(500);
     Serial.print("Done "); Serial.println(*counter);
   }
-  //Serial.write(motor_id);
-  //Serial.println(*counter);
-  return 'X';
+  
+  return return_value;
+}
+
+char calibrate_speeds() {
+  char movement_result;
+  byte PWMValuesA[5];
+  byte PWMValuesB[5];
+  float speedsA[] = {speedA/8, speedA/4, speedA/2, speedA, speedA*2};
+  float speedsB[] = {speedA/8, speedB/4, speedB/2, speedB, speedB*2};
+  float slopeA = 0;
+  float slopeB = 0;
+  float offsetA;
+  float offsetB;
+  target = 0;
+  movement_result = move_to('A', &target);
+  if (movement_result != 'X') {
+    return movement_result;
+  }
+  movement_result = move_to('B', &target);
+  if (movement_result != 'X') {
+    return movement_result;
+  }
+  for (byte i=0; i<5; i++) {
+    target = speedsA[i];
+    movement_result = move_to('A', &target);
+    if (movement_result != 'X') {
+      return movement_result;
+    }
+    PWMValuesA[i] = PWMA;
+  }
+
+  for (byte i=0; i<5; i++) {
+    target = speedsB[i];
+    movement_result = move_to('B', &target);
+    if (movement_result != 'X') {
+      return movement_result;
+    }
+    PWMValuesB[i] = PWMB;
+  }
+  //calculate average slope
+  for (byte i=0; i<4; i++) {
+     slopeA += ((float)(PWMValuesA[i+1] - PWMValuesA[i]) / (speedsA[i+1] - speedsA[i]))/4;
+     slopeB += ((float)(PWMValuesB[i+1] - PWMValuesB[i]) / (speedsB[i+1] - speedsB[i]))/4;
+  }
+  //use one point to find offset
+  offsetA = (float)PWMValuesA[0] - slopeA*speedsA[0];
+  offsetB = (float)PWMValuesB[0] - slopeB*speedsB[0];
+
+}
+
+char calibrate_positions() {
+  
 }
 
 void countA()
@@ -270,11 +321,6 @@ void countA()
     this_timeA = micros();
     counterA++;
   }
-//  if ((MotorPinState&1) == 1 && (MotorPinState&2) == 0) {
-//    counterA -= 1;
-//  } else if ((MotorPinState&1) == 0 && (MotorPinState&2) == 2) {
-//    counterA += 1;
-//  }
 }
 
 void countB()
@@ -289,9 +335,4 @@ void countB()
     this_timeB = micros();
     counterB++;
   }
-//  if ((MotorPinState&4) == 4 && (MotorPinState&8) == 0) {
-//    counterB -= 1;
-//  } else if ((MotorPinState&4) == 0 && (MotorPinState&8) == 8) {
-//    counterB += 1;
-//  }
 }
