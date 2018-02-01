@@ -70,7 +70,7 @@ void loop()
   }
 }
 // X: move motor, V: set verbosity, R: ready check, P: get position, L: set laser state (for movements),
-// F: switch laser on/off (immediately), C: set counter, S: set speed, D: do speed calibration   
+// F: switch laser on/off (immediately), C: set counter, S: set speed, D: do speed calibration, G: get calibration
 void process_line() {
   char cmd = Serial.read();
   char motor_id;
@@ -131,7 +131,12 @@ void process_line() {
     						           Serial.write('E'); break;
     			      }
                 return;
-      case 'D': char res = calibrate_speeds(); Serial.write(res); return;
+      case 'D': {char res = calibrate_speeds(); Serial.write(res);}
+                return;
+      case 'G': Serial.print("SlopeA: "); Serial.print(slopeA, 4); Serial.print(", OffsetA: "); Serial.print(offsetA);
+                Serial.print(", SlopeB: "); Serial.print(slopeB, 4); Serial.print(", OffsetB: "); Serial.println(offsetB);
+                return;
+      
   }
   if (verbosity > 0) {
     Serial.print(cmd);
@@ -165,8 +170,8 @@ char move_to(char motor_id, long* target_pos) {
                 }
                 PWMValue = &PWMA;
                 counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA;
-                blockedThreshold = 300; target_speed = speedA; last_time = &last_timeA;
-                this_time = &this_timeA; backlashSteps = 150; break;
+                blockedThreshold = 200; target_speed = speedA; last_time = &last_timeA;
+                this_time = &this_timeA; backlashSteps = 0; break;
       case 'B': if (slopeB > 0) {
                   PWMB = (byte)round(speedB*slopeB + offsetB);
                   has_calibration = true;
@@ -191,14 +196,16 @@ char move_to(char motor_id, long* target_pos) {
   } else {
     MinPWMValue = 0;
   }
-  Serial.println(*PWMValue);Serial.println(MaxPWMValue);
-  Serial.println(MinPWMValue);
+  //Serial.println(*PWMValue);Serial.println(MaxPWMValue);
+  //Serial.println(MinPWMValue);
   
   float current_speed = target_speed;
   long difference = *counter - *target_pos;
   if (last_direction > 0 && difference < 0) {
+    //Serial.println("backlash left");
     *counter -= backlashSteps;
   } else if (last_direction < 0 && difference > 0) {
+    //Serial.println("backlash right");
     *counter += backlashSteps;
   }
 
@@ -224,17 +231,17 @@ char move_to(char motor_id, long* target_pos) {
 	  current_position = *counter;
 	  difference = current_position - *target_pos;
   	if (last_position != current_position || (now - last_loop_time) > 2.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
-      unsigned long time_diff = *this_time - *last_time;
-      if (time_diff > 0) {
+      long time_diff = *this_time - *last_time;
+      if (time_diff != 0) {
         current_speed = 1.0 / (float)(time_diff) * 1e6;  
       }
             
   	  if (verbosity > 1) {
-        Serial.print("Current speed: "); Serial.print(current_speed); Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.print(time_diff); Serial.write(" "); Serial.println(target_speed);
+        Serial.println(*PWMValue);//Serial.print("Current speed: "); Serial.print(current_speed); Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.print(time_diff); Serial.write(" "); Serial.println(target_speed);
   	  }
   	  if (last_position == current_position) {
         not_moved++;
-        if (not_moved > 3) {
+        if (not_moved > 2) {
           current_speed = 0;
         }
         if (verbosity > 1) {
@@ -244,9 +251,8 @@ char move_to(char motor_id, long* target_pos) {
           if (verbosity > 0) {
             Serial.print("Motor might be blocked. Stopping. ");
             Serial.println(*counter);
-          } else {
-            return_value = 'B';
           }
+          return_value = 'B';
           not_moved = 0;
           break;
           }
@@ -255,7 +261,7 @@ char move_to(char motor_id, long* target_pos) {
         }
 	  
   	  if ((difference < 0 && (last_position-current_position) > 0) || (difference > 0 && (last_position-current_position) < 0)) {
-        current_speed = target_speed + 1;
+        current_speed = 0;//target_speed + 1;
   	  }
   	
   	  if (current_speed > target_speed && *PWMValue > MinPWMValue) {
@@ -282,13 +288,13 @@ char move_to(char motor_id, long* target_pos) {
   digitalWrite(LaserPin, LOW);
   *MotorBank |= 1<<MotorPin1;
   *MotorBank |= 1<<MotorPin2;
-  last_timeA = 0;
-  this_timeA = 0;
-  last_timeB = 0;
-  this_timeB = 0;
+  //last_timeA = 0;
+  //this_timeA = 0;
+  //last_timeB = 0;
+  //this_timeB = 0;
   if (verbosity > 0) {
     delay(500);
-    Serial.print("Done "); Serial.println(*counter);
+    Serial.print("Done "); Serial.print(*PWMValue); Serial.write(" "); Serial.println(*counter);
   }
   
   return return_value;
@@ -296,45 +302,61 @@ char move_to(char motor_id, long* target_pos) {
 
 char calibrate_speeds() {
   char movement_result;
-  byte PWMValuesA[5];
-  byte PWMValuesB[5];
-  float speedsA[] = {speedA/8, speedA/4, speedA/2, speedA, speedA*2};
-  float speedsB[] = {speedB/8, speedB/4, speedB/2, speedB, speedB*2};
+  const byte array_length = 10;
+  float speedsA[] = {speedA/4, speedA/2, speedA, speedA*2, speedA*3, speedA*3, speedA*2, speedA, speedA/2, speedA/4};
+  float speedsB[] = {speedB/4, speedB/2, speedB, speedB*2, speedB*3, speedB*3, speedB*2, speedB, speedB/2, speedB/4};
+  byte PWMValuesA[array_length];
+  byte PWMValuesB[array_length];
   slopeA = 0;
   slopeB = 0;
-  
-  target = 0;
+  speedA = speedsA[0];
+  speedB = speedsB[0];
+  target = (long)(counterA + ((long)2*speedA));
   movement_result = move_to('A', &target);
   if (movement_result != 'X') {
     return movement_result;
   }
+  target = (long)(counterB + ((long)2*speedB));
   movement_result = move_to('B', &target);
   if (movement_result != 'X') {
     return movement_result;
   }
-  for (byte i=0; i<5; i++) {
-    target = (long)round(speedsA[i]);
+  for (byte i=0; i<array_length; i++) {
+    if (i < array_length/2) {
+      target = counterA + ((long)round(2*speedsA[i]));  
+    } else {
+      target = counterA - ((long)round(2*speedsA[i]));
+    }
+    
     speedA = speedsA[i];
     movement_result = move_to('A', &target);
     if (movement_result != 'X') {
-      speedA = speedsA[3];
+      speedA = speedsA[2];
+      target = 0;
       return movement_result;
     }
     PWMValuesA[i] = PWMA;
+    delay(500);
   }
-  speedA = speedsA[3];
+  speedA = speedsA[2];
 
-  for (byte i=0; i<5; i++) {
-    target = (long)round(speedsB[i]);
+  for (byte i=0; i<array_length; i++) {
+    if (i < array_length/2) {
+      target = counterB + ((long)round(2*speedsB[i])); 
+    } else {
+      target = counterB - ((long)round(2*speedsB[i]));
+    }
     speedB = speedsB[i];
     movement_result = move_to('B', &target);
     if (movement_result != 'X') {
-      speedB = speedsB[3];
+      speedB = speedsB[2];
+      target = 0;
       return movement_result;
     }
     PWMValuesB[i] = PWMB;
+    delay(500);
   }
-  speedB = speedsB[3];
+  speedB = speedsB[2];
   //calculate average slope
   for (byte i=0; i<4; i++) {
      slopeA += ((float)(PWMValuesA[i+1] - PWMValuesA[i]) / (speedsA[i+1] - speedsA[i]))/4;
@@ -343,10 +365,33 @@ char calibrate_speeds() {
   //use one point to find offset
   offsetA = (float)PWMValuesA[0] - slopeA*speedsA[0];
   offsetB = (float)PWMValuesB[0] - slopeB*speedsB[0];
+  char result = linreg(array_length, speedsA, PWMValuesA, &slopeA, &offsetA, NULL);
+  if (result != 'D') {
+    target = 0;
+    return result;
+  }
+  result = linreg(array_length, speedsB, PWMValuesB, &slopeB, &offsetB, NULL);
+  if (result != 'D') {
+    target = 0;
+    return result;
+  }
   save_to_EEPROM();
   target = 0;
-  movement_result = move_to('A', &target);
-  movement_result = move_to('B', &target);
+  //movement_result = move_to('A', &target);
+  //movement_result = move_to('B', &target);
+  if (verbosity > 0) {
+    Serial.print("Motor A calibrations: ");
+    for (byte i=0; i<array_length; i++) {
+      Serial.print(PWMValuesA[i]);
+      Serial.write(" ");
+    }
+    Serial.print(", Motor B calibrations: ");
+    for (byte i=0; i<array_length; i++) {
+      Serial.print(PWMValuesB[i]);
+      Serial.write(" ");
+    }
+    Serial.write("\n");
+  }
   return 'D';
 }
 
@@ -414,4 +459,39 @@ void countB()
     this_timeB = micros();
     counterB++;
   }
+}
+
+char linreg(byte n, const float x[], const byte y[], float* m, float* b, float* r){
+    float   sumx = 0.0;                      /* sum of x     */
+    float   sumx2 = 0.0;                     /* sum of x**2  */
+    float   sumxy = 0.0;                     /* sum of x * y */
+    float   sumy = 0.0;                      /* sum of y     */
+    float   sumy2 = 0.0;                     /* sum of y**2  */
+
+    for (int i=0;i<n;i++){ 
+        sumx  += x[i];       
+        sumx2 += x[i]*x[i];  
+        sumxy += x[i]*y[i];
+        sumy  += y[i];      
+        sumy2 += y[i]*y[i]; 
+    } 
+
+    float denom = (n * sumx2 - sumx*sumx);
+    if (denom == 0) {
+        // singular matrix. can't solve the problem.
+        *m = 0;
+        *b = 0;
+        if (r) *r = 0;
+            return 'E';
+    }
+
+    *m = (n * sumxy  -  sumx * sumy) / denom;
+    *b = (sumy * sumx2  -  sumx * sumxy) / denom;
+    if (r!=NULL) {
+        *r = (sumxy - sumx * sumy / n) /    /* compute correlation coeff */
+              sqrt((sumx2 - (sumx*sumx)/n) *
+              (sumy2 - (sumy*sumy)/n));
+    }
+
+    return 'D'; 
 }
