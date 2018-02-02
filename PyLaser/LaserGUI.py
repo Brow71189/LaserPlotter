@@ -8,10 +8,15 @@ Created on Sun Aug 27 16:48:31 2017
 import tkinter as tk
 from tkinter import font
 from tkinter import filedialog
-import LaserDriver
 import os
 import threading
 import numpy as np
+
+try:
+    import LaserDriver
+except ModuleNotFoundError:
+    import sys
+    sys.path.append(os.path.dirname(__file__))
 
 class LaserGUI(object):
     def __init__(self):
@@ -25,8 +30,10 @@ class LaserGUI(object):
         self.abort_button = None
         self.connect_button = None
         self.simulator_canvas = None
+        self.mode_combo_box = None
         self.steps = None
         self._abort_move = False
+        self._pause_move = False
         self._current_counter = 0
         self._thread = None
         self.do_simulation = False
@@ -52,7 +59,7 @@ class LaserGUI(object):
                     self.connect_button['text'] = 'Disconnect'
             elif self.connect_button['text'] == 'Disconnect':
                 LaserDriver.close()
-                self.info_label['text'] = 'Connect to plotter'
+                self.connect_button['text'] = 'Connect to plotter'
 
         def settings_button_clicked():
             self.info_label['text'] = ''
@@ -189,9 +196,16 @@ class LaserGUI(object):
 
         def start_button_clicked():
             info_label['text'] = ''
-            if self.connect_button['text'] == 'Connect to plotter':
+            if self.connect_button['text'] == 'Connect to plotter' and not self.do_simulation:
                 info_label['text'] = 'You have to connect to the plotter before starting a plot'
                 return
+            
+            if self.start_button['text'] == 'Pause plot':
+                pause_button_clicked()
+                return
+            
+            if self._pause_move and self.start_button['text'] == 'Resume plot':
+                self._pause_move = False
 
             if self.mode.get() == 'file':
                 try:
@@ -210,8 +224,9 @@ class LaserGUI(object):
                 self._thread.start()
 
             self.abort_button.config(state=tk.NORMAL)
-            self.start_button.config(state=tk.DISABLED)
             self.connect_button.config(state=tk.DISABLED)
+            self.mode_combo_box.config(state=tk.DISABLED)
+            self.start_button['text'] = 'Pause plot'
 
         def abort_button_clicked():
             self._abort_move = True
@@ -219,9 +234,14 @@ class LaserGUI(object):
             self.steps = None
             self._current_counter = 0
             self._current_line = None
-            self.abort_button.config(state=tk.DISABLED)
+            self.mode_combo_box.config(state=tk.NORMAL)
             if self._thread is None or not self._thread.is_alive():
                 self._abort_move = False
+                
+        def pause_button_clicked():
+            self._pause_move = True
+            if self._thread is None or not self._thread.is_alive():
+                self._pause_move = False
 
         def mode_changed(*args):
             self.info_label['text'] = ''
@@ -287,9 +307,9 @@ class LaserGUI(object):
         self.mode = tk.StringVar()
         self.mode.trace('w', mode_changed)
         self.mode.set(mode_options[0])
-        mode_combo_box = tk.OptionMenu(self.root, self.mode, *mode_options)
-        mode_combo_box.config(font=default_font)
-        mode_combo_box.grid(column=0, row=2, padx=default_padx, pady=default_pady)
+        self.mode_combo_box = tk.OptionMenu(self.root, self.mode, *mode_options)
+        self.mode_combo_box.config(font=default_font)
+        self.mode_combo_box.grid(column=0, row=2, padx=default_padx, pady=default_pady)
         #simulator canvas
         self.simulator_canvas = tk.Canvas(self.root, height=200, width=200, bg='white')
         self.simulator_canvas.grid(column=4, row=1, rowspan=3, columnspan=2)
@@ -316,15 +336,24 @@ class LaserGUI(object):
                 self._current_counter = 0
                 self.start_button['text'] = 'Start plot'
                 self.start_button.config(state=tk.NORMAL)
+                self.abort_button.config(state=tk.DISABLED)
                 break
+            
             self._current_line = line
+            
+            if self._pause_move:
+                self.start_button['text'] = 'Resume plot'
+                self.abort_button.config(state=tk.NORMAL)
+                break
             try:
                 self.process_line(line)
             except RuntimeError:
                 self.finish()
                 return
-        self._current_line = None
-        self.finish()
+        
+        if not self._pause_move:
+            self._current_line = None
+            self.finish()
 
     def process_line(self, line):
         #print(line)
@@ -381,12 +410,14 @@ class LaserGUI(object):
                 self.info_label['text'] = message
                 self.start_button['text'] = 'Resume plot'
                 self.start_button.config(state=tk.NORMAL)
+                self.abort_button.config(state=tk.DISABLED)
                 raise
             else:
                 self.steps = None
                 self._current_counter = 0
                 self.start_button['text'] = 'Start plot'
                 self.start_button.config(state=tk.NORMAL)
+                self.abort_button.config(state=tk.DISABLED)
 
     def execute_simulation_move(self):
         min_x = min_y = np.inf
@@ -432,6 +463,7 @@ class LaserGUI(object):
         self.start_button.config(state=tk.NORMAL)
         self.abort_button.config(state=tk.DISABLED)
         self.connect_button.config(state=tk.NORMAL)
+        self.mode_combo_box.config(state=tk.NORMAL)
         LaserDriver.execute_move([('z', 0)])
         self.do_simulation = False
         self._abort_move = False
