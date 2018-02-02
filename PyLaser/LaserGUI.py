@@ -108,23 +108,23 @@ class LaserGUI(object):
                     else:
                         LaserDriver.y_steps_per_mm = res
 
-            def x_speed_changed(*args):
-                if len(x_speed.get()) > 0 and x_speed.get() != str(LaserDriver.x_speed):
+            def fast_movement_speed_changed(*args):
+                if len(fast_movement_speed.get()) > 0 and fast_movement_speed.get() != str(LaserDriver.fast_movement_speed):
                     try:
-                        res = float(x_speed.get())
+                        res = float(fast_movement_speed.get())
                     except ValueError as e:
                         self.info_label['text'] = str(e)
-                        x_speed.set(LaserDriver.x_speed)
+                        fast_movement_speed.set(LaserDriver.fast_movement_speed)
                     else:
                         LaserDriver.x_speed = res
 
-            def y_speed_changed(*args):
-                if len(y_speed.get()) > 0 and y_speed.get() != str(LaserDriver.y_speed):
+            def engraving_movement_speed_changed(*args):
+                if len(engraving_movement_speed.get()) > 0 and engraving_movement_speed.get() != str(LaserDriver.engraving_movement_speed):
                     try:
-                        res = float(y_speed.get())
+                        res = float(engraving_movement_speed.get())
                     except ValueError as e:
                         self.info_label['text'] = str(e)
-                        y_speed.set(LaserDriver.y_speed)
+                        engraving_movement_speed.set(LaserDriver.engraving_movement_speed)
                     else:
                         LaserDriver.y_speed = res
 
@@ -167,18 +167,21 @@ class LaserGUI(object):
             y_steps_per_mm_field = tk.Entry(settings_window, font=default_font, textvariable=y_steps_per_mm, width=6)
             y_steps_per_mm_field.grid(column=2, row=3, padx=default_padx, pady=default_pady, sticky=tk.W)
 
-            speed_label = tk.Label(settings_window, font=default_font, text='Speed in mm/s (x, y):', anchor=tk.W)
+            speed_label = tk.Label(settings_window, font=default_font, text='Speed in mm/s (fast, engrave):',
+                                   anchor=tk.W)
             speed_label.grid(column=0, row=4, pady=default_pady, padx=default_padx, sticky=tk.W)
-            x_speed = tk.StringVar()
-            y_speed = tk.StringVar()
-            x_speed.set(LaserDriver.x_speed)
-            y_speed.set(LaserDriver.y_speed)
-            x_speed.trace('w', x_speed_changed)
-            y_speed.trace('w', y_speed_changed)
-            x_speed_field = tk.Entry(settings_window, font=default_font, textvariable=x_speed, width=6)
-            x_speed_field.grid(column=1, row=4, padx=default_padx, pady=default_pady, sticky=tk.W)
-            y_speed_field = tk.Entry(settings_window, font=default_font, textvariable=y_speed, width=6)
-            y_speed_field.grid(column=2, row=4, padx=default_padx, pady=default_pady, sticky=tk.W)
+            fast_movement_speed = tk.StringVar()
+            engraving_movement_speed = tk.StringVar()
+            fast_movement_speed.set(LaserDriver.fast_movement_speed)
+            engraving_movement_speed.set(LaserDriver.engraving_movement_speed)
+            fast_movement_speed.trace('w', fast_movement_speed_changed)
+            engraving_movement_speed.trace('w', engraving_movement_speed_changed)
+            fast_movement_speed = tk.Entry(settings_window, font=default_font, textvariable=fast_movement_speed,
+                                           width=6)
+            fast_movement_speed.grid(column=1, row=4, padx=default_padx, pady=default_pady, sticky=tk.W)
+            engraving_movement_speed = tk.Entry(settings_window, font=default_font,
+                                                textvariable=engraving_movement_speed, width=6)
+            engraving_movement_speed.grid(column=2, row=4, padx=default_padx, pady=default_pady, sticky=tk.W)
 
         def open_button_clicked():
             filename = ''
@@ -196,6 +199,11 @@ class LaserGUI(object):
 
         def start_button_clicked():
             info_label['text'] = ''
+            try:
+                LaserDriver.save_config()
+            except Exception as e:
+                info_label['text'] = str(e)
+                
             if self.connect_button['text'] == 'Connect to plotter' and not self.do_simulation:
                 info_label['text'] = 'You have to connect to the plotter before starting a plot'
                 return

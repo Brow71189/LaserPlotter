@@ -6,7 +6,7 @@ Laser Plotter Driver
 import serial
 import numpy as np
 import argparse
-import time
+import configparser
 import os
 
 ####################### settings ###########################################
@@ -14,9 +14,12 @@ arduino_serial_port = '/dev/ttyACM0'
 arduino_serial_baudrate = 115200
 y_steps_per_mm = 11.77
 x_steps_per_mm = 378.21
-y_speed = 1 # in mm/s
-x_speed = 1 # in mm/s
+y_speed = 5 # in mm/s
+x_speed = 5 # in mm/s
 resolution = 150 #dpi
+use_gcode_speeds = False
+fast_movement_speed = 20 # mm/s
+engraving_movement_speed = 2 # mm/s
 motor_ids = {
              'x': 'XA',
              'y': 'XB',
@@ -29,6 +32,56 @@ ser = None
 standalone_mode = False
 current_steps_x = 0
 current_steps_y = 0
+
+def load_config():
+    parser = configparser.ConfigParser()
+    config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
+    if os.path.isfile(config_path):
+        parser.read(config_path)
+        settings_from_parser(parser)
+
+def save_config():
+    parser = settings_to_parser()
+    config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
+    with open(config_path, 'w+') as config_file:
+        parser.write(config_file)
+    
+def settings_to_parser():
+    parser = configparser.ConfigParser()
+    parser.add_section('connection')
+    parser.add_section('calibrations')
+    parser.add_section('options')
+    parser.add_section('motor ids')
+    parser.set('connection', 'serial port', arduino_serial_port)
+    parser.set('connection', 'baudrate', str(arduino_serial_baudrate))
+    parser.set('calibrations', 'x steps per mm', str(x_steps_per_mm))
+    parser.set('calibrations', 'y steps per mm', str(y_steps_per_mm))
+    parser.set('calibrations', 'x speed', str(x_speed))
+    parser.set('calibrations', 'y speed', str(y_speed))
+    parser.set('options', 'resolution', str(resolution))
+    parser.set('options', 'use gcode speeds', str(use_gcode_speeds))
+    parser.set('options', 'fast movement speed', str(fast_movement_speed))
+    parser.set('options', 'engraving movement speed', str(engraving_movement_speed))
+    for key, value in motor_ids.items():
+        parser.set('motor ids', key, value)
+    return parser
+
+def settings_from_parser(parser):
+    global arduino_serial_port, arduino_serial_baudrate, x_steps_per_mm, y_steps_per_mm, x_speed, y_speed, motor_ids
+    global resolution, use_gcode_speeds, fast_movement_speed, engraving_movement_speed
+
+    arduino_serial_port = parser.get('connection', 'serial port', fallback=arduino_serial_port)
+    arduino_serial_baudrate = parser.getint('connection', 'baudrate', fallback=arduino_serial_baudrate)
+    x_steps_per_mm = parser.getfloat('calibrations', 'x steps per mm', fallback=x_steps_per_mm)
+    y_steps_per_mm = parser.getfloat('calibrations', 'y steps per mm', fallback=y_steps_per_mm)
+    x_speed = parser.getfloat('calibrations', 'x speed', fallback=x_speed)
+    y_speed = parser.getfloat('calibrations', 'y speed', fallback=y_speed)
+    resolution = parser.getfloat('options','resolution', fallback=resolution)
+    use_gcode_speeds = parser.getboolean('options', 'use gcode speeds', fallback=use_gcode_speeds)
+    fast_movement_speed = parser.getfloat('options', 'fast movement speed', fallback=fast_movement_speed)
+    engraving_movement_speed = parser.get('options', 'engraving movement speed', fallback=engraving_movement_speed)    
+    for key, value in parser.items(section='motor ids'):
+        motor_ids[key] = value
 
 def execute_move(steps):
     global ser
@@ -241,11 +294,21 @@ def parse_line(line):
             f = float(piece[1:])
         else:
             pass
-    if f is not None:
+        
+    if f is not None and use_gcode_speeds:
         x_speed = f
         y_speed = f
-        set_speed('x', x_speed)
-        set_speed('y', y_speed)
+    else:
+        if line.startswith('G00'):
+            x_speed = fast_movement_speed
+            y_speed = fast_movement_speed
+        else:
+            x_speed = engraving_movement_speed
+            y_speed = engraving_movement_speed
+    
+    set_speed('x', x_speed)
+    set_speed('y', y_speed)
+            
     if i is not None or j is not None:
         if z is not None:
             return ((z, y, x), (j, i))
@@ -325,6 +388,7 @@ def main():
     parser.add_argument('-l', '--line', help='interprets a single line of GCode')
     parser.add_argument('-f', '--file', help='interprets a GCode File')
     args = parser.parse_args()
+    load_config()
     os.system('stty -F {:s} -hupcl'.format(arduino_serial_port))
     ser = serial.Serial(arduino_serial_port, arduino_serial_baudrate, timeout=0.1)
     res = b''
@@ -351,6 +415,7 @@ def close():
     if ser is not None:
         ser.close()
         ser = None
+    save_config()
 
 def calc_arc(steps):
     x_l = []
