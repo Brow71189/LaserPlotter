@@ -17,6 +17,7 @@ try:
 except ModuleNotFoundError:
     import sys
     sys.path.append(os.path.dirname(__file__))
+    import LaserDriver
 
 class LaserGUI(object):
     def __init__(self):
@@ -39,6 +40,10 @@ class LaserGUI(object):
         self.do_simulation = False
 
     def create_gui(self):
+        try:
+            LaserDriver.load_config()
+        except Exception as e:
+            print(str(e))
         self.root = tk.Tk()
         # Fonts definitions
         default_font = font.Font()
