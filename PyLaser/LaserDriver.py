@@ -92,6 +92,8 @@ def execute_move(steps):
     if res != b'R':
         print(res)
         raise RuntimeError('Engraver not ready.')
+    set_speed('x', x_speed)
+    set_speed('y', y_speed)
     counter = 0
     while counter < len(steps):
         #ser.reset_input_buffer()
@@ -305,9 +307,6 @@ def parse_line(line):
         else:
             x_speed = engraving_movement_speed
             y_speed = engraving_movement_speed
-    
-    set_speed('x', x_speed)
-    set_speed('y', y_speed)
             
     if i is not None or j is not None:
         if z is not None:

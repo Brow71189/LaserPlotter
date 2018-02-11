@@ -14,7 +14,7 @@ import numpy as np
 
 try:
     import LaserDriver
-except ModuleNotFoundError:
+except ImportError:
     import sys
     sys.path.append(os.path.dirname(__file__))
     import LaserDriver
@@ -243,13 +243,8 @@ class LaserGUI(object):
 
         def abort_button_clicked():
             self._abort_move = True
-            self.start_button['text'] = 'Start plot'
-            self.steps = None
-            self._current_counter = 0
-            self._current_line = None
-            self.mode_combo_box.config(state=tk.NORMAL)
             if self._thread is None or not self._thread.is_alive():
-                self._abort_move = False
+                self.reset()
                 
         def pause_button_clicked():
             self._pause_move = True
@@ -345,11 +340,7 @@ class LaserGUI(object):
 
         for line in self._file:
             if self._abort_move:
-                self.steps = None
-                self._current_counter = 0
-                self.start_button['text'] = 'Start plot'
-                self.start_button.config(state=tk.NORMAL)
-                self.abort_button.config(state=tk.DISABLED)
+                self.reset()
                 break
             
             self._current_line = line
@@ -380,8 +371,6 @@ class LaserGUI(object):
         if line.startswith('G00'):
             position = LaserDriver.parse_line(line)
             self.steps = LaserDriver.move_linear(position, engrave=False)
-            LaserDriver.set_speed('x', 20)
-            LaserDriver.set_speed('y', 20)
         elif line.startswith('G01'):
             position = LaserDriver.parse_line(line)
             self.steps = LaserDriver.move_linear(position, engrave=True)
@@ -472,14 +461,32 @@ class LaserGUI(object):
                     self.simulator_canvas.create_oval(x-1, 200-y+1, x+1, 200-y-1, fill='black')
                 counter += 1
 
+# Call this after a successful run or an exception that we handle
     def finish(self):
         self.start_button.config(state=tk.NORMAL)
         self.abort_button.config(state=tk.DISABLED)
         self.connect_button.config(state=tk.NORMAL)
         self.mode_combo_box.config(state=tk.NORMAL)
-        LaserDriver.execute_move([('z', 0)])
+        self.start_button['text'] = 'Start plot'
+        if not self.do_simulation:
+            LaserDriver.execute_move([('z', 0)])
         self.do_simulation = False
         self._abort_move = False
+
+# Call this on abort (maybe also use it for unhandled exceptions)    
+    def reset(self):
+        self.steps = None
+        self._current_line = None
+        self._abort_move = False
+        self._current_counter = 0
+        self.start_button['text'] = 'Start plot'
+        self.start_button.config(state=tk.NORMAL)
+        self.abort_button.config(state=tk.DISABLED)
+        self.connect_button.config(state=tk.NORMAL)
+        self.mode_combo_box.config(state=tk.NORMAL)
+        if not self.do_simulation:
+            LaserDriver.execute_move([('z', 0)])
+        self.do_simulation = False
 
 if __name__ == '__main__':
     GUI = LaserGUI()
