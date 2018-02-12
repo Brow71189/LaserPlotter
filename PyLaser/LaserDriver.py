@@ -79,7 +79,7 @@ def settings_from_parser(parser):
     resolution = parser.getfloat('options','resolution', fallback=resolution)
     use_gcode_speeds = parser.getboolean('options', 'use gcode speeds', fallback=use_gcode_speeds)
     fast_movement_speed = parser.getfloat('options', 'fast movement speed', fallback=fast_movement_speed)
-    engraving_movement_speed = parser.get('options', 'engraving movement speed', fallback=engraving_movement_speed)    
+    engraving_movement_speed = parser.getfloat('options', 'engraving movement speed', fallback=engraving_movement_speed)    
     for key, value in parser.items(section='motor ids'):
         motor_ids[key] = value
 
@@ -92,6 +92,7 @@ def execute_move(steps):
     if res != b'R':
         print(res)
         raise RuntimeError('Engraver not ready.')
+        
     set_speed('x', x_speed)
     set_speed('y', y_speed)
     counter = 0
@@ -187,20 +188,16 @@ def move_linear(target_position, engrave=False):
                 else:
                     steps.append(('y', step))
                 last_y = i*np.sin(angle)
-        steps.append(('x', int(np.rint(x*x_steps_per_mm))))
-        steps.append(('y', int(np.rint(y*y_steps_per_mm))))
-        current_steps_x = x*x_steps_per_mm
-        current_steps_y = y*y_steps_per_mm
-    else:
-        x_step = int(np.rint(x*x_steps_per_mm))
-        y_step = int(np.rint(y*y_steps_per_mm))
-        if x_step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
-            x_step = 1
-        if y_step == 0:
-            y_step = 1
-        steps.extend([('x', x_step), ('y', y_step)])
-        current_steps_x = x_step
-        current_steps_y = y_step
+                
+    x_step = int(np.rint(x*x_steps_per_mm))
+    y_step = int(np.rint(y*y_steps_per_mm))
+    if x_step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
+        x_step = 1
+    if y_step == 0:
+        y_step = 1
+    steps.extend([('x', x_step), ('y', y_step)])
+    current_steps_x = x_step
+    current_steps_y = y_step
     #print(current_steps_x, current_steps_y)
     return steps
     
@@ -266,10 +263,15 @@ def move_circular(target_position, center, direction: str):
         #if x_pixels_moved + y_pixels_moved >= total_number_pixels and (abs(x - last_x) <= 1/resolution_mm and
         #                                                               abs(y - last_y) <= 1/resolution_mm):
  #           break
-    steps.append(('x', int(np.rint(x*x_steps_per_mm))))
-    steps.append(('y', int(np.rint(y*y_steps_per_mm))))
-    current_steps_x = x*x_steps_per_mm
-    current_steps_y = y*y_steps_per_mm
+    x_step = int(np.rint(x*x_steps_per_mm))
+    y_step = int(np.rint(y*y_steps_per_mm))
+    if x_step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
+        x_step = 1
+    if y_step == 0:
+        y_step = 1
+    steps.extend([('x', x_step), ('y', y_step)])
+    current_steps_x = x_step
+    current_steps_y = y_step
     
     return steps
 
@@ -401,7 +403,7 @@ def main():
     if res != b'V':
         print(res)
         raise RuntimeError('Could not set verbosity')
-    ser.timeout = 30
+    ser.timeout = 300
     if args.line is not None:
         process_line(args.line)
     elif args.file is not None:

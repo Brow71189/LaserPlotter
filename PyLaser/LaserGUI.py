@@ -121,7 +121,7 @@ class LaserGUI(object):
                         self.info_label['text'] = str(e)
                         fast_movement_speed.set(LaserDriver.fast_movement_speed)
                     else:
-                        LaserDriver.x_speed = res
+                        LaserDriver.fast_movement_speed = res
 
             def engraving_movement_speed_changed(*args):
                 if len(engraving_movement_speed.get()) > 0 and engraving_movement_speed.get() != str(LaserDriver.engraving_movement_speed):
@@ -131,7 +131,7 @@ class LaserGUI(object):
                         self.info_label['text'] = str(e)
                         engraving_movement_speed.set(LaserDriver.engraving_movement_speed)
                     else:
-                        LaserDriver.y_speed = res
+                        LaserDriver.engraving_movement_speed = res
 
             settings_window = tk.Toplevel(self.root)
 
@@ -361,6 +361,8 @@ class LaserGUI(object):
 
     def process_line(self, line):
         #print(line)
+        import time
+        starttime = time.time()
         self.info_label['text'] = ''
         line = line.upper()
         line = line.strip()
@@ -396,6 +398,7 @@ class LaserGUI(object):
         finally:
             if self.mode.get() == 'line':
                 self.finish()
+                print('Elapsed time: {:.2f} s'.format(time.time() - starttime))
 
     def process_raw(self, raw):
         res = LaserDriver.send_raw(raw)
@@ -412,14 +415,14 @@ class LaserGUI(object):
                 self.info_label['text'] = message
                 self.start_button['text'] = 'Resume plot'
                 self.start_button.config(state=tk.NORMAL)
-                self.abort_button.config(state=tk.DISABLED)
+                self.abort_button.config(state=tk.NORMAL)
                 raise
             else:
                 self.steps = None
                 self._current_counter = 0
-                self.start_button['text'] = 'Start plot'
-                self.start_button.config(state=tk.NORMAL)
-                self.abort_button.config(state=tk.DISABLED)
+                #self.start_button['text'] = 'Start plot'
+                #self.start_button.config(state=tk.NORMAL)
+                #self.abort_button.config(state=tk.DISABLED)
 
     def execute_simulation_move(self):
         min_x = min_y = np.inf

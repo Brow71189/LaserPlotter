@@ -9,7 +9,7 @@ float speedA = 10.0*378.21; // in steps per second
 float speedB = 10.0*11.71; // in steps per second
 byte PWMA = 127;
 byte PWMB = 127;
-const byte PWMTolerance = 20;
+const byte PWMTolerance = 50;
 volatile unsigned long last_timeA = 0;
 volatile unsigned long last_timeB = 0;
 volatile unsigned long this_timeA = 0;
@@ -231,13 +231,14 @@ char move_to(char motor_id, long* target_pos) {
 	  current_position = *counter;
 	  difference = current_position - *target_pos;
   	if (last_position != current_position || (now - last_loop_time) > 2.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
-      long time_diff = *this_time - *last_time;
-      if (time_diff != 0) {
-        current_speed = 1.0 / (float)(time_diff) * 1e6;  
+      //long time_diff = *this_time - *last_time;
+      //if (time_diff != 0) {
+      if (now - last_loop_time != 0) {
+        current_speed = (float)(abs(last_position - current_position)) / (float)(now - last_loop_time) * 1e6;  
       }
             
   	  if (verbosity > 1) {
-        Serial.println(*PWMValue);//Serial.print("Current speed: "); Serial.print(current_speed); Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.print(time_diff); Serial.write(" "); Serial.println(target_speed);
+        Serial.print(*PWMValue); Serial.print(" Current speed: "); Serial.println(current_speed); //Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.print(time_diff); Serial.write(" "); Serial.println(target_speed);
   	  }
   	  if (last_position == current_position) {
         not_moved++;
@@ -437,14 +438,12 @@ void countA()
 // This is triggering on the rising flank so we just have to check the value of the second sensor pin to determine the direction.
 { 
   if (*SensorBank&1<<SensorPinA) {
-    last_timeA = this_timeA;
-    this_timeA = micros();
     counterA--;
   } else {
-    last_timeA = this_timeA;
-    this_timeA = micros();
     counterA++;
   }
+  last_timeA = this_timeA;
+  this_timeA = micros();
 }
 
 void countB()
