@@ -7,8 +7,8 @@ char motor;
 int not_moved = 0;
 float speedA = 10.0*378.21; // in steps per second
 float speedB = 10.0*11.71; // in steps per second
-byte PWMA = 127;
-byte PWMB = 127;
+byte PWMA = 40;
+byte PWMB = 100;
 const byte PWMTolerance = 50;
 volatile unsigned long last_timeA = 0;
 volatile unsigned long last_timeB = 0;
@@ -35,6 +35,7 @@ float slopeB = 0;
 float offsetA;
 float offsetB;
 const byte magic_number = 42;
+int burnin_time_ms = 150;
 
 void setup()
 {
@@ -160,8 +161,8 @@ char move_to(char motor_id, long* target_pos) {
   byte MinPWMValue;
   float target_speed;
   int blockedThreshold;
-  volatile unsigned long* last_time;
-  volatile unsigned long* this_time;
+  //volatile unsigned long* last_time;
+  //volatile unsigned long* this_time;
   bool has_calibration = false;
   switch (motor_id) {
       case 'A': if (slopeA > 0) {
@@ -170,16 +171,16 @@ char move_to(char motor_id, long* target_pos) {
                 }
                 PWMValue = &PWMA;
                 counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA;
-                blockedThreshold = 200; target_speed = speedA; last_time = &last_timeA;
-                this_time = &this_timeA; backlashSteps = 0; break;
+                blockedThreshold = 200; target_speed = speedA; //last_time = &last_timeA;
+                /*this_time = &this_timeA;*/ backlashSteps = 0; break;
       case 'B': if (slopeB > 0) {
                   PWMB = (byte)round(speedB*slopeB + offsetB);
                   has_calibration = true;
                 }
                 PWMValue = &PWMB;
                 counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB;
-                blockedThreshold = 24; target_speed = speedB; last_time = &last_timeB;
-                this_time = &this_timeB; backlashSteps = 0; break;
+                blockedThreshold = 24; target_speed = speedB; //last_time = &last_timeB;
+                /*this_time = &this_timeB;*/ backlashSteps = 0; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
@@ -217,49 +218,38 @@ char move_to(char motor_id, long* target_pos) {
     last_direction = 0;
   }
   long current_position = *counter;
-  long last_position = *counter;
-  unsigned long last_loop_time = micros();
+  long last_position = current_position + 1;
+  unsigned long now;
+  unsigned long last_loop_time = 0;
+  unsigned long last_moved = micros();
   if (LaserState) {
     //*SensorBank |= 1<<LaserPin;
     digitalWrite(LaserPin, HIGH);
+    delay(burnin_time_ms);
   } else {
     //*SensorBank &= ~(1<<LaserPin);
     digitalWrite(LaserPin, LOW);
   }
+  
   while (difference != 0) {
-    unsigned long now = micros();
+    now = micros();
 	  current_position = *counter;
 	  difference = current_position - *target_pos;
-  	if (last_position != current_position || (now - last_loop_time) > 2.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
+  	if (last_position != current_position && (now - last_loop_time) > 8000) {//4.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
       //long time_diff = *this_time - *last_time;
       //if (time_diff != 0) {
-      if (now - last_loop_time != 0) {
-        current_speed = (float)(abs(last_position - current_position)) / (float)(now - last_loop_time) * 1e6;  
+      //speed_now = micros();
+      //speed_position = *counter;
+      if (true) {//(now - last_loop_time != 0) {
+        current_speed = (float)(abs(last_position - current_position)) / (float)(now - last_loop_time) * 1e6;
+        //current_speed = (float)(abs(speed_last_position - speed_position)) / (float)(speed_now - speed_last_time) * 1e6;
+        //speed_last_time = speed_now;
+        //speed_last_position = speed_position;
       }
             
   	  if (verbosity > 1) {
         Serial.print(*PWMValue); Serial.print(" Current speed: "); Serial.println(current_speed); //Serial.write(" "); Serial.print(last_position-current_position); Serial.write(" "); Serial.print(*PWMValue); Serial.write(" "); Serial.print(time_diff); Serial.write(" "); Serial.println(target_speed);
   	  }
-  	  if (last_position == current_position) {
-        not_moved++;
-        if (not_moved > 2) {
-          current_speed = 0;
-        }
-        if (verbosity > 1) {
-          Serial.print("Increasing not moved counter to: "); Serial.println(not_moved);
-        }
-        if (not_moved > blockedThreshold) {
-          if (verbosity > 0) {
-            Serial.print("Motor might be blocked. Stopping. ");
-            Serial.println(*counter);
-          }
-          return_value = 'B';
-          not_moved = 0;
-          break;
-          }
-        } else {
-          not_moved = 0;
-        }
 	  
   	  if ((difference < 0 && (last_position-current_position) > 0) || (difference > 0 && (last_position-current_position) < 0)) {
         current_speed = 0;//target_speed + 1;
@@ -282,8 +272,25 @@ char move_to(char motor_id, long* target_pos) {
           *MotorBank &= ~(1<<MotorPin1);
       }
       analogWrite(PWMPin, *PWMValue);
-  	  last_loop_time = now;
-  	  last_position = current_position;
+      last_loop_time = now;
+      last_position = current_position;
+      last_moved = now;
+      not_moved = 0;
+	  } else if ((now - last_moved) > 10.0e6/target_speed) {
+        not_moved++;
+        //current_speed = 0;
+        if (verbosity > 1) {
+          Serial.print("Increasing not moved counter to: "); Serial.println(not_moved);
+        }
+        if (not_moved > blockedThreshold) {
+          if (verbosity > 0) {
+            Serial.print("Motor might be blocked. Stopping. ");
+            Serial.println(*counter);
+          }
+          return_value = 'B';
+          not_moved = 0;
+          break;
+          }
 	  }
   }
   digitalWrite(LaserPin, LOW);
@@ -442,22 +449,20 @@ void countA()
   } else {
     counterA++;
   }
-  last_timeA = this_timeA;
-  this_timeA = micros();
+  //last_timeA = this_timeA;
+  //this_timeA = micros();
 }
 
 void countB()
 // This triggers on both flanks. If we check whether both pins are in the same state or opposite we can determine the direction 
 { 
   if (((*SensorBank&1<<InterruptPinB)>>InterruptPinB) ^ ((*SensorBank&1<<SensorPinB)>>SensorPinB)) {
-    last_timeB = this_timeB;
-    this_timeB = micros();
     counterB--;
   } else {
-    last_timeB = this_timeB;
-    this_timeB = micros();
     counterB++;
   }
+  //last_timeB = this_timeB;
+  //this_timeB = micros();
 }
 
 char linreg(byte n, const float x[], const byte y[], float* m, float* b, float* r){
