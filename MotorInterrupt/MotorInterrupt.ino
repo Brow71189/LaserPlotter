@@ -35,7 +35,7 @@ float slopeB = 0;
 float offsetA;
 float offsetB;
 const byte magic_number = 42;
-int burnin_time_ms = 150;
+int burnin_time_ms = 100;
 
 void setup()
 {
@@ -217,11 +217,7 @@ char move_to(char motor_id, long* target_pos) {
   } else {
     last_direction = 0;
   }
-  long current_position = *counter;
-  long last_position = current_position + 1;
-  unsigned long now;
-  unsigned long last_loop_time = 0;
-  unsigned long last_moved = micros();
+  
   if (LaserState) {
     //*SensorBank |= 1<<LaserPin;
     digitalWrite(LaserPin, HIGH);
@@ -230,6 +226,13 @@ char move_to(char motor_id, long* target_pos) {
     //*SensorBank &= ~(1<<LaserPin);
     digitalWrite(LaserPin, LOW);
   }
+  
+  long current_position = *counter;
+  long last_position = current_position + 1;
+  unsigned long now;
+  unsigned long last_loop_time = 0;
+  unsigned long last_moved = micros();
+  not_moved = 0;
   
   while (difference != 0) {
     now = micros();

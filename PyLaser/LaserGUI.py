@@ -336,6 +336,7 @@ class LaserGUI(object):
                 self.process_line(self._current_line)
             except RuntimeError:
                 self.finish()
+                self.start_button['text'] = 'Resume plot'
                 return
 
         for line in self._file:
