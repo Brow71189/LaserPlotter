@@ -6,24 +6,34 @@ Created on Sat Feb 17 10:50:14 2018
 """
 
 from flexx import app, event, ui
+
+import sys, os
+sys.path.append(os.path.dirname(__file__))
+
+from _file import OpenFileWidget
 import time
+import threading
+from flexx.pyscript import window
+
 
 class AppRoot(app.PyComponent):
     """
     Root widget
     This class talks to the Laser Driver module and handles the connection to the ui
     It also saves the state of all variables
-    """
+    """    
     gcode_file = event.StringProp()
     gcode_line = event.StringProp()
     raw_command = event.StringProp()
     current_mode = event.StringProp('File Mode')
     plot_running = event.BoolProp()
     simulate = event.BoolProp()
+    use_gcode_speeds = event.BoolProp()
     settings = event.DictProp()
     
     def init(self):
         self.view = View()
+        #threading.Thread(target=self.delayed, daemon=True).start()
         
     @event.action
     def set_current_mode(self, mode):
@@ -43,9 +53,27 @@ class AppRoot(app.PyComponent):
         self.update_info_label('start')
         
     @event.action
+    def handle_use_gcode_speeds_clicked(self, checked):
+        self._mutate_use_gcode_speeds(checked)
+        self.update_info_label('use gcode speeds {}'.format('ON' if checked else 'OFF'))
+
+    @event.action
+    def handle_new_gcode_file(self, file_content):
+        self._mutate_gcode_file(file_content)
+        self.update_info_label('new gcode file arrived')
+    
+    @event.action
     def update_info_label(self, text):
         self.view.update_info_label(text)
         
+    @event.action
+    def apply_styles(self):
+        self.view.apply_styles()
+        
+    def delayed(self):
+        time.sleep(3)
+        self.apply_styles()
+    
 class View(ui.Widget):
     """
     Contains all the ui elements and creates the Layout of the app
@@ -61,6 +89,12 @@ class View(ui.Widget):
     @event.action
     def update_info_label(self, text):
         self.control_panel.update_info_label(text)
+        
+    @event.action
+    def apply_styles(self):
+        self.tab_panel.apply_styles()
+        self.control_panel.apply_styles()
+        self.plot_panel.apply_styles()
 
 class TabPanel(ui.Widget):
     """
@@ -85,7 +119,11 @@ class TabPanel(ui.Widget):
             
             self.tabs.set_current(old_v)
         elif new_v.title != 'Settings':
-            self.root.set_current_mode(new_v.title)        
+            self.root.set_current_mode(new_v.title)
+            
+    @event.action
+    def apply_styles(self):
+        self.file_tab.apply_styles()
 
 class ControlPanel(ui.Widget):
     """
@@ -93,13 +131,17 @@ class ControlPanel(ui.Widget):
     """
     def init(self):
         with ui.VBox():
-            with ui.HBox(flex=1):
+            with ui.HBox(flex=0):
                 self.connect_button = ui.Button(flex=1, text='Connect to plotter', title='connect')
-                ui.Label(flex=1)
+                ui.Widget(flex=1)
                 self.abort_button = ui.Button(flex=1, text='Abort plot', title='abort')
                 self.start_button = ui.Button(flex=1, text='Start plot', title='start')
             
             self.info_label = ui.Label(flex=1, wrap=True, text='Status Label')
+            
+    @event.action
+    def apply_styles(self):
+        pass
     
     @event.action
     def update_info_label(self, text):
@@ -124,6 +166,9 @@ class PlotPanel(ui.Widget):
     """
     This class contains the panel where the simulated plot is drawn
     """
+    @event.action
+    def apply_styles(self):
+        pass
 
 class FileTab(ui.Widget):
     """
@@ -133,15 +178,46 @@ class FileTab(ui.Widget):
     
     def init(self):
         with ui.VBox():
-            ui.HBox(flex=1)
+            ui.Widget(flex=1)
+            ui.Label(flex=0, text='Select a gcode file here:')
+            #with ui.HBox(flex=0):
+                #self.path_label = ui.LineEdit(flex=3, text='C:/Path/to/Gcode/File.gcode', disabled=True)
+                #self.open_button = ui.Button(flex=1, text='Open...', title='open')
+            self.open_gcode_widget = OpenFileWidget()
+            ui.Widget(flex=1)
             with ui.HBox(flex=0):
-                self.path_label = ui.LineEdit(flex=3, text='C:/Path/to/Gcode/File.gcode', disabled=True)
-                self.open_button = ui.Button(flex=1, text='Open...')
-            ui.HBox(flex=4)
+                self.use_gcode_speeds_button = ui.ToggleButton(flex=0, text='Use gcode speeds', title='use_gcode_speed')
+                ui.Widget(flex=1)
+            ui.Widget(flex=8)
             
-    @event.reaction('open_button.mouse_click')
-    def _button_clicked(self, *events):
-        self.root.update_info_label('open clicked')
+#    @event.reaction('open_button.mouse_click')
+#    def _button_clicked(self, *events):
+#        ev = events[-1]
+#        if ev.source.title == 'open':
+#            self.root.update_info_label('open clicked')
+
+    @event.reaction('use_gcode_speeds_button.checked')  
+    def _button_toggled(self, *events):
+        self.root.handle_use_gcode_speeds_clicked(self.use_gcode_speeds_button.checked)
+        
+    @event.reaction('open_gcode_widget.file')
+    def _new_gcode_file_loaded(self):
+        self._convert_gcode_file_to_string()
+        
+    @event.action
+    def _convert_gcode_file_to_string(self):
+        def _get_string(event):
+            self.root.handle_new_gcode_file(event.target.result)
+            print(event.target.result)
+        
+        if self.open_gcode_widget.file is not None:
+            reader = window.FileReader()
+            reader.onload = _get_string
+            reader.readAsText(self.open_gcode_widget.file)
+
+    @event.action
+    def apply_styles(self):
+        self.use_gcode_speeds_button.apply_style('margin-top:21px')
     
     
 class LineTab(ui.Widget):
