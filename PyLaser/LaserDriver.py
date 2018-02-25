@@ -33,55 +33,80 @@ standalone_mode = False
 current_steps_x = 0
 current_steps_y = 0
 
-def load_config():
-    parser = configparser.ConfigParser()
-    config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
-    if os.path.isfile(config_path):
-        parser.read(config_path)
-        settings_from_parser(parser)
-
-def save_config():
-    parser = settings_to_parser()
-    config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
-    with open(config_path, 'w+') as config_file:
-        parser.write(config_file)
+class LaserDriver(object):
+    motor_ids = {
+                     'x': 'XA',
+                     'y': 'XB',
+                     'z': 'L'
+                     }
     
-def settings_to_parser():
-    parser = configparser.ConfigParser()
-    parser.add_section('connection')
-    parser.add_section('calibrations')
-    parser.add_section('options')
-    parser.add_section('motor ids')
-    parser.set('connection', 'serial port', arduino_serial_port)
-    parser.set('connection', 'baudrate', str(arduino_serial_baudrate))
-    parser.set('calibrations', 'x steps per mm', str(x_steps_per_mm))
-    parser.set('calibrations', 'y steps per mm', str(y_steps_per_mm))
-    parser.set('calibrations', 'x speed', str(x_speed))
-    parser.set('calibrations', 'y speed', str(y_speed))
-    parser.set('options', 'resolution', str(resolution))
-    parser.set('options', 'use gcode speeds', str(use_gcode_speeds))
-    parser.set('options', 'fast movement speed', str(fast_movement_speed))
-    parser.set('options', 'engraving movement speed', str(engraving_movement_speed))
-    for key, value in motor_ids.items():
-        parser.set('motor ids', key, value)
-    return parser
+    states = ['active', 'pause', 'stopped', 'error', 'ready', 'idle']
+    
+    def __init__(self):
+        self.serial_port = '/dev/ttyACM0'
+        self.serial_baudrate = 115200
+        self.y_steps_per_mm = 11.77
+        self.x_steps_per_mm = 378.21
+        self.y_speed = 5 # in mm/s
+        self.x_speed = 5 # in mm/s
+        self.resolution = 150 #dpi
+        self.use_gcode_speeds = False
+        self.fast_movement_speed = 20 # mm/s
+        self.engraving_movement_speed = 2 # mm/s
+        
+        self._state = 'stopped'
+        
+        self.callback_function = None
+        
+        self.load_config()
 
-def settings_from_parser(parser):
-    global arduino_serial_port, arduino_serial_baudrate, x_steps_per_mm, y_steps_per_mm, x_speed, y_speed, motor_ids
-    global resolution, use_gcode_speeds, fast_movement_speed, engraving_movement_speed
-
-    arduino_serial_port = parser.get('connection', 'serial port', fallback=arduino_serial_port)
-    arduino_serial_baudrate = parser.getint('connection', 'baudrate', fallback=arduino_serial_baudrate)
-    x_steps_per_mm = parser.getfloat('calibrations', 'x steps per mm', fallback=x_steps_per_mm)
-    y_steps_per_mm = parser.getfloat('calibrations', 'y steps per mm', fallback=y_steps_per_mm)
-    x_speed = parser.getfloat('calibrations', 'x speed', fallback=x_speed)
-    y_speed = parser.getfloat('calibrations', 'y speed', fallback=y_speed)
-    resolution = parser.getfloat('options','resolution', fallback=resolution)
-    use_gcode_speeds = parser.getboolean('options', 'use gcode speeds', fallback=use_gcode_speeds)
-    fast_movement_speed = parser.getfloat('options', 'fast movement speed', fallback=fast_movement_speed)
-    engraving_movement_speed = parser.getfloat('options', 'engraving movement speed', fallback=engraving_movement_speed)    
-    for key, value in parser.items(section='motor ids'):
-        motor_ids[key] = value
+    def load_config(self):
+        parser = configparser.ConfigParser()
+        config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
+        if os.path.isfile(config_path):
+            parser.read(config_path)
+            self.settings_from_parser(parser)
+    
+    def save_config(self):
+        parser = self.settings_to_parser()
+        config_path = os.path.join(os.path.dirname(__file__), 'config.ini')
+        with open(config_path, 'w+') as config_file:
+            parser.write(config_file)
+        
+    def settings_to_parser(self):
+        parser = configparser.ConfigParser()
+        parser.add_section('connection')
+        parser.add_section('calibrations')
+        parser.add_section('options')
+        parser.add_section('motor ids')
+        parser.set('connection', 'serial port', self.arduino_serial_port)
+        parser.set('connection', 'baudrate', str(self.arduino_serial_baudrate))
+        parser.set('calibrations', 'x steps per mm', str(self.x_steps_per_mm))
+        parser.set('calibrations', 'y steps per mm', str(self.y_steps_per_mm))
+        parser.set('calibrations', 'x speed', str(self.x_speed))
+        parser.set('calibrations', 'y speed', str(self.y_speed))
+        parser.set('options', 'resolution', str(self.resolution))
+        parser.set('options', 'use gcode speeds', str(self.use_gcode_speeds))
+        parser.set('options', 'fast movement speed', str(self.fast_movement_speed))
+        parser.set('options', 'engraving movement speed', str(self.engraving_movement_speed))
+        for key, value in self.motor_ids.items():
+            parser.set('motor ids', key, value)
+        return parser
+    
+    def settings_from_parser(self, parser):    
+        self.arduino_serial_port = parser.get('connection', 'serial port', fallback=self.arduino_serial_port)
+        self.arduino_serial_baudrate = parser.getint('connection', 'baudrate', fallback=self.arduino_serial_baudrate)
+        self.x_steps_per_mm = parser.getfloat('calibrations', 'x steps per mm', fallback=self.x_steps_per_mm)
+        self.y_steps_per_mm = parser.getfloat('calibrations', 'y steps per mm', fallback=self.y_steps_per_mm)
+        self.x_speed = parser.getfloat('calibrations', 'x speed', fallback=self.x_speed)
+        self.y_speed = parser.getfloat('calibrations', 'y speed', fallback=self.y_speed)
+        self.resolution = parser.getfloat('options','resolution', fallback=self.resolution)
+        self.use_gcode_speeds = parser.getboolean('options', 'use gcode speeds', fallback=self.use_gcode_speeds)
+        self.fast_movement_speed = parser.getfloat('options', 'fast movement speed', fallback=self.fast_movement_speed)
+        self.engraving_movement_speed = parser.getfloat('options', 'engraving movement speed',
+                                                        fallback=self.engraving_movement_speed)    
+        for key, value in parser.items(section='motor ids'):
+            self.motor_ids[key] = value
 
 def execute_move(steps):
     global ser
