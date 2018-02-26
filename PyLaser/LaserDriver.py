@@ -40,9 +40,27 @@ class LaserDriver(object):
                      'z': 'L'
                      }
     
-    states = ['active', 'pause', 'stopped', 'error', 'ready', 'idle']
+    states = {
+              'active': {},
+              'pause': {}, 
+              'error': {},
+              'ready': {},
+              'idle': {}
+              }
     
     def __init__(self):
+        
+        self._state = 'idle'
+        self.state = 'idle'
+        self._current_line = None
+        self._abort_move = False
+        self._pause_move = False
+        self._current_steps_x = 0
+        self._current_steps_y = 0
+        self._ser = None
+        self._resolution_mm = None
+        self._move_to = {}
+        
         self.serial_port = '/dev/ttyACM0'
         self.serial_baudrate = 115200
         self.y_steps_per_mm = 11.77
@@ -53,12 +71,141 @@ class LaserDriver(object):
         self.use_gcode_speeds = False
         self.fast_movement_speed = 20 # mm/s
         self.engraving_movement_speed = 2 # mm/s
-        
-        self._state = 'stopped'
+        self.gcode_file = None
+        self.gcode_line = None
+        self.raw_command = None     
         
         self.callback_function = None
         
         self.load_config()
+        
+    @property
+    def resolution(self):
+        return self.resolution * 25.4
+    
+    @resolution.setter
+    def resolution(self, resolution):
+        self._resolution_mm = resolution/25.4
+        
+    def parse_line(self, line):
+        x = y = z = i = j = f = None
+        comment_start = line.find('(')
+        if comment_start != -1:
+            line = line[:comment_start]
+        
+        splitline = line.strip().split()
+        for piece in splitline:
+            if piece.startswith('X'):
+                x = float(piece[1:])
+            elif piece.startswith('Y'):
+                y = float(piece[1:])
+            elif piece.startswith('Z'):
+                z = float(piece[1:])
+            elif piece.startswith('I'):
+                i = float(piece[1:])
+            elif piece.startswith('J'):
+                j = float(piece[1:])
+            elif piece.startswith('F'):
+                f = float(piece[1:])
+            else:
+                pass
+            
+        if f is not None and use_gcode_speeds:
+            self.x_speed = f
+            self.y_speed = f
+        else:
+            if line.startswith('G00'):
+                self.x_speed = self.fast_movement_speed
+                self.y_speed = self.fast_movement_speed
+            else:
+                self.x_speed = self.engraving_movement_speed
+                self.y_speed = self.engraving_movement_speed
+                
+        if i is not None or j is not None:
+            if z is not None:
+                return ((z, y, x), (j, i))
+            else:        
+                return ((y, x), (j, i))
+        else:
+            if z is not None:
+                return (z, y, x)
+            else:
+                return (y, x)
+    
+    def calculate_steps(self):
+        pass
+        
+    def process_line(self):
+        if self.gcode_line is None:
+            return
+        import time
+        starttime = time.time()
+        line = self.gcode_line.upper()
+        line = line.strip()
+        
+        if line.startswith('G') and self.state in ('ready', 'active'):
+            self._current_steps_x = self.get_current_steps('x')
+            self._current_steps_y = self.get_current_steps('y')
+        
+        self.parse_line(line)
+        self.calculate_steps()
+        
+        if line.startswith('G00'):
+            position = self.parse_line(line)
+            self.steps = self.move_linear(position, engrave=False)
+        elif line.startswith('G01'):
+            position = self.parse_line(line)
+            self.steps = self.move_linear(position, engrave=True)
+        elif line.startswith('G02'):
+            position, center = self.parse_line(line)
+            self.steps = self.move_circular(position, center, 'cw')
+        elif line.startswith('G03'):
+            position, center = self.parse_line(line)
+            self.steps = self.move_circular(position, center, 'ccw')
+        elif line.startswith('(') or line.startswith('%') or not line:
+            # Comments from inkscape Gcodetools are in paranthesis
+            pass
+        else:
+            print('unrecognized command: {}'.format(line))
+
+        try:
+            if self.do_simulation:
+                self.execute_simulation_move()
+            else:
+                self.execute_move()
+        except RuntimeError:
+            raise
+        finally:
+            if self.mode.get() == 'line':
+                self.finish()
+                print('Elapsed time: {:.2f} s'.format(time.time() - starttime))
+        
+    def process_file(self):
+        if self._current_line is not None:
+            try:
+                self.gcode_line = self._current_line
+                self.process_line()
+            except RuntimeError:
+                self.state = 'error'
+                raise
+
+        for line in self.gcode_file:
+            if self._abort_move:
+                self.state = 'ready'
+                return
+            
+            self._current_line = line
+            self.gcode_line = line
+            
+            if self._pause_move:
+                self.state = 'pause'
+                return
+            
+            try:
+                self.process_line()
+            except RuntimeError:
+                self.state = 'error'
+                raise
 
     def load_config(self):
         parser = configparser.ConfigParser()
