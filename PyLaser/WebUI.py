@@ -26,11 +26,43 @@ class AppRoot(app.PyComponent):
     gcode_line = event.StringProp()
     raw_command = event.StringProp()
     current_mode = event.StringProp('File Mode')
+    state = event.StringProp('idle')
     plot_running = event.BoolProp()
     simulate = event.BoolProp()
     settings = event.DictProp()#{'resolution': 150, 'serial_port': 1, 'serial_baudrate': 19200, 'x_steps_per_mm': 378,
                                #'y_steps_per_mm': 12, 'fast_movement_speed': 10, 'engraving_movement_speed': 2,
                                #'use_gcode_speeds': False}
+    __states = event.DictProp({'idle': {'start_button.text': 'Start plot',
+                                        'start_button.disabled': True,
+                                        'abort_button.text': 'Abort plot',
+                                        'abort_button.disabled': True,
+                                        'connect_button.text': 'Connect to plotter',
+                                        'connect_button.disabled': False},
+                               'ready': {'start_button.text': 'Start plot',
+                                         'start_button.disabled': False,
+                                         'abort_button.text': 'Abort plot',
+                                         'abort_button.disabled': True,
+                                         'connect_button.text': 'Disconnect from plotter',
+                                         'connect_button.disabled': False},
+                               'active': {'start_button.text': 'Pause plot',
+                                          'start_button.disabled': False,
+                                          'abort_button.text': 'Abort plot',
+                                          'abort_button.disabled': False,
+                                          'connect_button.text': 'Disconnect from plotter',
+                                          'connect_button.disabled': True},
+                               'error': {'start_button.text': 'Resume plot',
+                                         'start_button.disabled': False,
+                                         'abort_button.text': 'Abort plot',
+                                         'abort_button.disabled': False,
+                                         'connect_button.text': 'Disconnect from plotter',
+                                         'connect_button.disabled': True},
+                               'pause': {'start_button.text': 'Resume plot',
+                                         'start_button.disabled': False,
+                                         'abort_button.text': 'Abort plot',
+                                         'abort_button.disabled': False,
+                                         'connect_button.text': 'Disconnect from plotter',
+                                         'connect_button.disabled': True}
+                               })
     
     settings_types = {'resolution': float, 'serial_port': str, 'serial_baudrate': int, 'x_steps_per_mm': float,
                       'y_steps_per_mm': float, 'fast_movement_speed': float, 'engraving_movement_speed': float,
@@ -104,10 +136,14 @@ class AppRoot(app.PyComponent):
         self.view.propagate_change(name_changed)
     
     @event.action
-    def low_level_parameter_changed(self, parameter_name, new_value):
-        pass
+    def low_level_parameter_changed(self, description_dict):
+        if description_dict.get('action') == 'set':
+            if description_dict.get('parameter') == 'state':
+                self._mutate_state(description_dict.get('value'))
+        elif description_dict.get('action') == 'done':
+            pass
         
-    @event.reaction('gcode_file', 'gcode_line', 'raw_command', 'current_mode', 'plot_running', 'simulate', 'settings')
+    @event.reaction('gcode_file', 'gcode_line', 'raw_command', 'current_mode', 'plot_running', 'simulate', 'settings', 'state')
     def property_changed(self, *events):
         for ev in events:
             if ev.type == 'settings':
@@ -118,6 +154,9 @@ class AppRoot(app.PyComponent):
                     for key, value in ev.new_value.items():
                         setattr(self.laser_driver, key, value)
                 self.propagate_change('settings')
+            elif ev.type == 'state':
+                self.propagate_change('state')
+                self.update_info_label(ev.new_value)
                         
     
 class View(ui.Widget):

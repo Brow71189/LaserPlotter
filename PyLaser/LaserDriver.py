@@ -10,6 +10,8 @@ import argparse
 import configparser
 import os
 import logging
+from io import StringIO
+import threading
 
 ####################### settings ###########################################
 arduino_serial_port = '/dev/ttyACM0'
@@ -31,18 +33,51 @@ motor_ids = {
 
 
 class LaserDriver(object):
-    motor_ids = {
+    __motor_ids = {
                      'x': 'XA',
                      'y': 'XB',
                      'z': 'L'
                      }
     
-    states = {
-              'active': {},
-              'pause': {}, 
-              'error': {},
-              'ready': {},
-              'idle': {}
+    __states = {
+                'active': {'_pause_move': False,
+                           '_abort_move': False},
+                'pause': {'_pause_move': True,
+                          '_abort_move': False,
+                          '_thread': None}, 
+                'error': {'_pause_move': False,
+                          '_abort_move': False,
+                          '_thread': None},
+                'ready': {'_current_line': None,
+                         '_target_position': {},
+                         '_steps': [],
+                         '_current_counter': 0,
+                         'gcode_file': None,
+                         'gcode_line': None,
+                         'raw_command': None,
+                         '_thread': None},
+                'idle': {'_current_line': None,
+                         '_ser': None,
+                         '_target_position': {},
+                         '_steps': [],
+                         '_current_counter': 0,
+                         'gcode_file': None,
+                         'gcode_line': None,
+                         'raw_command': None,
+                         '_thread': None},
+                }
+              
+    __done = {
+              'raw': {'raw_command': None,
+                      '_thread': None},
+              'line': {'raw_command': None,
+                       'gcode_line': None,
+                       '_steps': [],
+                       '_current_counter': 0,
+                       '_current_line': None,
+                       '_target_position': {},
+                       '_thread': None},
+              'file': {'state': 'ready'}
               }
     
     def __init__(self):
@@ -59,6 +94,8 @@ class LaserDriver(object):
         self._y_speed = 5 # in mm/s
         self._x_speed = 5 # in mm/s
         self._steps = []
+        self._current_counter = 0
+        self._thread = None
         
         self.serial_port = '/dev/ttyACM0'
         self.serial_baudrate = 115200
@@ -81,7 +118,7 @@ class LaserDriver(object):
         
     @property
     def resolution(self):
-        return self.resolution * 25.4
+        return self._resolution_mm * 25.4
     
     @resolution.setter
     def resolution(self, resolution):
@@ -96,14 +133,94 @@ class LaserDriver(object):
         if state == self._state:
             return
         
+        state_parameters = self.__states.get(state, dict())
+        for key, value in state_parameters.items():
+            setattr(self, key, value)
+        self._state = state
+        if callable(self.callback_function):
+            self.callback_function({'action': 'set', 'parameter': 'state', 'value': state})
+            
+    def abort(self):
+        self._abort_move = True
         
-    def send_raw(self, raw_command: str):
-        command = raw_command.encode()
+    def pause(self):
+        self._pause_move = True
+            
+    def _done(self, command):
+        done_parameters = self.__done.get(command, dict())
+        for key, value in done_parameters.items():
+            setattr(self, key, value)
+        if command == 'raw' and self.gcode_line is None:
+            self.state = 'ready'
+        elif command == 'line' and self.gcode_file is None:
+            self.state = 'ready'
+        if callable(self.callback_function):
+            self.callback_function({'action': 'done', 'value': command})
+            
+    def execute_command(self, command, content=None):
+        run_func = None
+        if command == 'raw':
+            if content is not None:
+                self.raw_command = content
+            def run():
+                try:
+                    self.send_raw()
+                except Exception as e:
+                    message = ''
+                    for p in e.args:
+                        message += p + ' '
+                    message = message[:-1]
+                    raise
+            run_func = run
+        elif command == 'line':
+            if content is not None:
+                self.gcode_line = content
+            def run():
+                try:
+                    self.process_line()
+                except Exception as e:
+                    message = ''
+                    for p in e.args:
+                        message += p + ' '
+                    message = message[:-1]
+                    raise
+            run_func = run
+        elif command == 'file':
+            if content is not None:
+                if type(content) == str:
+                    self.gcode_file = StringIO(initial_value=content)
+                else:
+                    self.gcode_file = content
+            
+            def run():
+                try:
+                    self.process_file()
+                except Exception as e:
+                    message = ''
+                    for p in e.args:
+                        message += p + ' '
+                    message = message[:-1]
+                    raise
+            run_func = run
+        
+        if run_func is not None:
+            self._thread = threading.Thread(run_func)
+            self._thread.start()
+        
+    def send_raw(self, raw_command=None):
+        if raw_command is not None:
+            self.raw_command = raw_command
+        if self.raw_command is None:
+            return
+        self.state = 'active'
+        command = self.raw_command.encode()
         try:
             self._ser.write(command)
         except SerialException:
             self.state = 'error'
             raise
+        else:
+            self._done('raw')
         res = b''
         while self._ser.in_waiting > 0:
             res += self._ser.read()
@@ -115,7 +232,7 @@ class LaserDriver(object):
             raise RuntimeError('Ready check failed! Reply was "{}" instead of "R"!'.format(reply))
             
     def get_current_steps(self, motor):
-        res = self.send_raw('P' + motor_ids[motor][1])
+        res = self.send_raw('P' + self.__motor_ids[motor][1])
         
         if res.endswith('P'):
             return int(res[:-1])
@@ -133,7 +250,7 @@ class LaserDriver(object):
         else:
             raise RuntimeError('Unknown motor id "{}". Must be either "x" or "y"'.format(motor))
             
-        cmd = 'S{:s}{:.1f}\n'.format(self.motor_ids[motor][1], speed_steps)
+        cmd = 'S{:s}{:.1f}\n'.format(self.__motor_ids[motor][1], speed_steps)
         
         res = self.send_raw(cmd)
         
@@ -162,10 +279,14 @@ class LaserDriver(object):
             self.state = 'error'
             raise
             
-        counter = 0
+        counter = self._current_counter
         while counter < len(self._steps):
+            self._current_counter = counter
+            if self._pause_move:
+                self.state = 'pause'
+                return
             motor, position = self._steps[counter]
-            cmd = '{:s}{:d}\n'.format(motor_ids[motor], position)
+            cmd = '{:s}{:d}\n'.format(self.__motor_ids[motor], position)
             res = self.send_raw(cmd)
             if res == 'X':
                 counter += 1
@@ -231,15 +352,18 @@ class LaserDriver(object):
         elif self._target_position.get('command') == 'G03':
             self.move_circular('ccw')    
         
-    def process_line(self):
+    def process_line(self, gcode_line=None):
+        if gcode_line is not None:
+            self.gcode_line = gcode_line
         if self.gcode_line is None:
             return
+        self.state = 'active'
         import time
         starttime = time.time()
         line = self.gcode_line.upper()
         line = line.strip()
         
-        if line.startswith('G') and self.state in ('ready', 'active'):
+        if line.startswith('G') and self.state in {'ready', 'active'}:
             self._current_steps_x = self.get_current_steps('x')
             self._current_steps_y = self.get_current_steps('y')
         
@@ -251,10 +375,14 @@ class LaserDriver(object):
         except RuntimeError:
             self.state = 'error'
             raise
+        else:
+            if not self.state in {'pause', 'error'}:
+                self._done('line')
         finally:
-            print('Elapsed time: {:.2f} s'.format(time.time() - starttime))
+            self.logger.info('Elapsed time: {:.2f} s'.format(time.time() - starttime))
         
     def process_file(self):
+        self.state = 'active'
         if self._current_line is not None:
             try:
                 self.gcode_line = self._current_line
@@ -280,6 +408,9 @@ class LaserDriver(object):
             except RuntimeError:
                 self.state = 'error'
                 raise
+                
+        if self.state not in ('error', 'pause'):
+            self.done('file')
 
     def load_config(self):
         parser = configparser.ConfigParser()
@@ -310,7 +441,7 @@ class LaserDriver(object):
         parser.set('options', 'use gcode speeds', str(self.use_gcode_speeds))
         parser.set('options', 'fast movement speed', str(self.fast_movement_speed))
         parser.set('options', 'engraving movement speed', str(self.engraving_movement_speed))
-        for key, value in self.motor_ids.items():
+        for key, value in self.__motor_ids.items():
             parser.set('motor ids', key, value)
         return parser
     
@@ -327,7 +458,7 @@ class LaserDriver(object):
         self.engraving_movement_speed = parser.getfloat('options', 'engraving movement speed',
                                                         fallback=self.engraving_movement_speed)    
         for key, value in parser.items(section='motor ids'):
-            self.motor_ids[key] = value
+            self.__motor_ids[key] = value
 
     def move_linear(self, target_position, engrave=False):
         """
@@ -468,10 +599,15 @@ class LaserDriver(object):
         except SerialException:
             self.state = 'error'
             raise
-        
-        res = ''
-        while not res == 'R':
-            res = self.send_raw('R')
+        success = False
+        while not success:
+            try:
+                self.check_ready()
+            except RuntimeError:
+                pass
+            else:
+                success = True
+                self.state = 'ready'
             
         res = self.send_raw('V0')
 
@@ -483,6 +619,7 @@ class LaserDriver(object):
         if self._ser is not None:
             self._ser.close()
             self._ser = None
+        self.state = 'idle'
         self.save_config()
         
 #def main():
