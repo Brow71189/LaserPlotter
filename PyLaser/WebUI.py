@@ -32,37 +32,7 @@ class AppRoot(app.PyComponent):
     settings = event.DictProp()#{'resolution': 150, 'serial_port': 1, 'serial_baudrate': 19200, 'x_steps_per_mm': 378,
                                #'y_steps_per_mm': 12, 'fast_movement_speed': 10, 'engraving_movement_speed': 2,
                                #'use_gcode_speeds': False}
-    __states = event.DictProp({'idle': {'start_button.text': 'Start plot',
-                                        'start_button.disabled': True,
-                                        'abort_button.text': 'Abort plot',
-                                        'abort_button.disabled': True,
-                                        'connect_button.text': 'Connect to plotter',
-                                        'connect_button.disabled': False},
-                               'ready': {'start_button.text': 'Start plot',
-                                         'start_button.disabled': False,
-                                         'abort_button.text': 'Abort plot',
-                                         'abort_button.disabled': True,
-                                         'connect_button.text': 'Disconnect from plotter',
-                                         'connect_button.disabled': False},
-                               'active': {'start_button.text': 'Pause plot',
-                                          'start_button.disabled': False,
-                                          'abort_button.text': 'Abort plot',
-                                          'abort_button.disabled': False,
-                                          'connect_button.text': 'Disconnect from plotter',
-                                          'connect_button.disabled': True},
-                               'error': {'start_button.text': 'Resume plot',
-                                         'start_button.disabled': False,
-                                         'abort_button.text': 'Abort plot',
-                                         'abort_button.disabled': False,
-                                         'connect_button.text': 'Disconnect from plotter',
-                                         'connect_button.disabled': True},
-                               'pause': {'start_button.text': 'Resume plot',
-                                         'start_button.disabled': False,
-                                         'abort_button.text': 'Abort plot',
-                                         'abort_button.disabled': False,
-                                         'connect_button.text': 'Disconnect from plotter',
-                                         'connect_button.disabled': True}
-                               })
+    states = event.DictProp()
     
     settings_types = {'resolution': float, 'serial_port': str, 'serial_baudrate': int, 'x_steps_per_mm': float,
                       'y_steps_per_mm': float, 'fast_movement_speed': float, 'engraving_movement_speed': float,
@@ -84,8 +54,40 @@ class AppRoot(app.PyComponent):
                     'fast_movement_speed': self.laser_driver.fast_movement_speed,
                     'engraving_movement_speed': self.laser_driver.engraving_movement_speed,
                     'use_gcode_speeds': self.laser_driver.use_gcode_speeds}
+        states = {'idle': [('start_button.text', 'Start plot'),
+                                        ('start_button.disabled', True),
+                                        ('abort_button.text', 'Abort plot'),
+                                        ('abort_button.disabled', True),
+                                        ('connect_button.text', 'Connect to plotter'),
+                                        ('connect_button.disabled', False)],
+                   'ready': [('start_button.text', 'Start plot'),
+                             ('start_button.disabled', False),
+                             ('abort_button.text', 'Abort plot'),
+                             ('abort_button.disabled', True),
+                             ('connect_button.text', 'Disconnect from plotter'),
+                             ('connect_button.disabled', False)],
+                   'active': [('start_button.text', 'Pause plot'),
+                              ('start_button.disabled', False),
+                              ('abort_button.text', 'Abort plot'),
+                              ('abort_button.disabled', False),
+                              ('connect_button.text', 'Disconnect from plotter'),
+                              ('connect_button.disabled', True)],
+                   'error': [('start_button.text', 'Resume plot'),
+                             ('start_button.disabled', False),
+                             ('abort_button.text', 'Abort plot'),
+                             ('abort_button.disabled', False),
+                             ('connect_button.text', 'Disconnect from plotter'),
+                             ('connect_button.disabled', True)],
+                   'pause': [('start_button.text', 'Resume plot'),
+                             ('start_button.disabled', False),
+                             ('abort_button.text', 'Abort plot'),
+                             ('abort_button.disabled', False),
+                             ('connect_button.text', 'Disconnect from plotter'),
+                             ('connect_button.disabled', True)]
+                   }
         
         self._mutate_settings(settings,'set')
+        self._mutate_states(states, 'set')
         
     @event.action
     def set_current_mode(self, mode):
@@ -163,6 +165,11 @@ class View(ui.Widget):
     """
     Contains all the ui elements and creates the Layout of the app
     """
+    CSS = """
+    .flx-Button[disabled] {
+            color: gray;
+    }
+    """
     def init(self):
         with ui.HSplit():
             with ui.VBox(flex=2):
@@ -217,6 +224,7 @@ class ControlPanel(ui.Widget):
     """
     This class contains all the ui elements to control the laser plotter
     """
+    
     def init(self):
         with ui.VBox():
             with ui.HBox(flex=0):
@@ -247,7 +255,12 @@ class ControlPanel(ui.Widget):
             
     @event.action
     def propagate_change(self, name_changed):
-        pass
+        if name_changed == 'state':
+            new_properties = self.root.states.get(self.root.state)
+            if new_properties is not None:
+                for key, value in new_properties:
+                    element, prop = key.split('.')
+                    getattr(getattr(self, element), 'set_' + prop)(value)
             
 
 class PlotPanel(ui.Widget):
