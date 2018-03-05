@@ -159,6 +159,10 @@ class LaserDriver(object):
             
     def execute_command(self, command, content=None):
         run_func = None
+        try:
+            self.save_config()
+        except Exception as e:
+            self.logger.error(str(e))
         if command == 'raw':
             if content is not None:
                 self.raw_command = content
@@ -168,8 +172,9 @@ class LaserDriver(object):
                 except Exception as e:
                     message = ''
                     for p in e.args:
-                        message += p + ' '
+                        message += str(p) + ' '
                     message = message[:-1]
+                    self.logger.error(message)
                     raise
             run_func = run
         elif command == 'line':
@@ -181,8 +186,9 @@ class LaserDriver(object):
                 except Exception as e:
                     message = ''
                     for p in e.args:
-                        message += p + ' '
+                        message += str(p) + ' '
                     message = message[:-1]
+                    self.logger.error(message)
                     raise
             run_func = run
         elif command == 'file':
@@ -198,11 +204,32 @@ class LaserDriver(object):
                 except Exception as e:
                     message = ''
                     for p in e.args:
-                        message += p + ' '
+                        message += str(p) + ' '
                     message = message[:-1]
+                    self.logger.error(message)
                     raise
             run_func = run
-        
+        elif command == 'start connection':
+            try:
+                self.start_connection()
+            except Exception as e:
+                message = ''
+                for p in e.args:
+                    message += str(p) + ' '
+                message = message[:-1]
+                self.logger.error(message)
+                raise
+        elif command == 'close connection':
+            try:
+                self.start_connection()
+            except Exception as e:
+                message = ''
+                for p in e.args:
+                    message += str(p) + ' '
+                message = message[:-1]
+                self.logger.error(message)
+                raise
+                
         if run_func is not None:
             self._thread = threading.Thread(run_func)
             self._thread.start()
@@ -431,8 +458,8 @@ class LaserDriver(object):
         parser.add_section('calibrations')
         parser.add_section('options')
         parser.add_section('motor ids')
-        parser.set('connection', 'serial port', self.arduino_serial_port)
-        parser.set('connection', 'baudrate', str(self.arduino_serial_baudrate))
+        parser.set('connection', 'serial port', self.serial_port)
+        parser.set('connection', 'baudrate', str(self.serial_baudrate))
         parser.set('calibrations', 'x steps per mm', str(self.x_steps_per_mm))
         parser.set('calibrations', 'y steps per mm', str(self.y_steps_per_mm))
         parser.set('calibrations', 'x speed', str(self._x_speed))
@@ -446,12 +473,12 @@ class LaserDriver(object):
         return parser
     
     def settings_from_parser(self, parser):    
-        self.arduino_serial_port = parser.get('connection', 'serial port', fallback=self.arduino_serial_port)
-        self.arduino_serial_baudrate = parser.getint('connection', 'baudrate', fallback=self.arduino_serial_baudrate)
+        self.serial_port = parser.get('connection', 'serial port', fallback=self.serial_port)
+        self.serial_baudrate = parser.getint('connection', 'baudrate', fallback=self.serial_baudrate)
         self.x_steps_per_mm = parser.getfloat('calibrations', 'x steps per mm', fallback=self.x_steps_per_mm)
         self.y_steps_per_mm = parser.getfloat('calibrations', 'y steps per mm', fallback=self.y_steps_per_mm)
-        self._x_speed = parser.getfloat('calibrations', 'x speed', fallback=self.x_speed)
-        self._y_speed = parser.getfloat('calibrations', 'y speed', fallback=self.y_speed)
+        self._x_speed = parser.getfloat('calibrations', 'x speed', fallback=self._x_speed)
+        self._y_speed = parser.getfloat('calibrations', 'y speed', fallback=self._y_speed)
         self.resolution = parser.getfloat('options','resolution', fallback=self.resolution)
         self.use_gcode_speeds = parser.getboolean('options', 'use gcode speeds', fallback=self.use_gcode_speeds)
         self.fast_movement_speed = parser.getfloat('options', 'fast movement speed', fallback=self.fast_movement_speed)
@@ -592,22 +619,28 @@ class LaserDriver(object):
         
     def start_connection(self):
         os.system('stty -F {:s} -hupcl'.format(arduino_serial_port))
-        self._ser = serial.Serial(self.arduino_serial_port, self.arduino_serial_baudrate, timeout=0.1)
         try:
+            self._ser = serial.Serial(self.serial_port, self.serial_baudrate, timeout=0.1)
             self._ser.reset_input_buffer()
             self._ser.reset_output_buffer()
         except SerialException:
-            self.state = 'error'
+            self.close()
             raise
-        success = False
-        while not success:
+
+        counter = 0
+        while counter < 100:
             try:
                 self.check_ready()
             except RuntimeError:
                 pass
             else:
-                success = True
                 self.state = 'ready'
+                break
+            finally:
+                counter += 1
+        else:
+            self.close()
+            raise RuntimeError('Plotter did not pass ready check. Check the connection and try to reconnect.')
             
         res = self.send_raw('V0')
 

@@ -10,6 +10,8 @@ from flexx import app, event, ui
 import sys, os
 sys.path.append(os.path.dirname(__file__))
 
+from logging import StreamHandler
+
 from _file import OpenFileWidget
 from flexx.pyscript import window
 
@@ -25,9 +27,9 @@ class AppRoot(app.PyComponent):
     gcode_file = event.StringProp()
     gcode_line = event.StringProp()
     raw_command = event.StringProp()
-    current_mode = event.StringProp('File Mode')
+    current_mode = event.StringProp('file')
     state = event.StringProp('idle')
-    plot_running = event.BoolProp()
+    #plot_running = event.BoolProp()
     simulate = event.BoolProp()
     settings = event.DictProp()#{'resolution': 150, 'serial_port': 1, 'serial_baudrate': 19200, 'x_steps_per_mm': 378,
                                #'y_steps_per_mm': 12, 'fast_movement_speed': 10, 'engraving_movement_speed': 2,
@@ -44,8 +46,17 @@ class AppRoot(app.PyComponent):
         self.view = View()
         self.initialize_UI()
         
+    @property
+    def plot_running(self):
+        return event.BoolProp(self.state == 'active')
+        
     @event.action
     def initialize_UI(self):
+        try:
+            self.laser_driver.logger.addHandler(StreamHandler(stream=StreamToInfoLabel(self.update_info_label)))
+        except Exception as e:
+            print(str(e))
+            
         settings = {'resolution': self.laser_driver.resolution,
                     'serial_port': self.laser_driver.serial_port,
                     'serial_baudrate': self.laser_driver.serial_baudrate,
@@ -54,12 +65,12 @@ class AppRoot(app.PyComponent):
                     'fast_movement_speed': self.laser_driver.fast_movement_speed,
                     'engraving_movement_speed': self.laser_driver.engraving_movement_speed,
                     'use_gcode_speeds': self.laser_driver.use_gcode_speeds}
-        states = {'idle': [('start_button.text', 'Start plot'),
-                                        ('start_button.disabled', True),
-                                        ('abort_button.text', 'Abort plot'),
-                                        ('abort_button.disabled', True),
-                                        ('connect_button.text', 'Connect to plotter'),
-                                        ('connect_button.disabled', False)],
+        states = { 'idle': [('start_button.text', 'Start plot'),
+                            ('start_button.disabled', True),
+                            ('abort_button.text', 'Abort plot'),
+                            ('abort_button.disabled', True),
+                            ('connect_button.text', 'Connect to plotter'),
+                            ('connect_button.disabled', False)],
                    'ready': [('start_button.text', 'Start plot'),
                              ('start_button.disabled', False),
                              ('abort_button.text', 'Abort plot'),
@@ -96,15 +107,30 @@ class AppRoot(app.PyComponent):
         
     @event.action
     def handle_connect_clicked(self):
-        self.update_info_label('connect')
+        if self.state == 'idle':
+            self.laser_driver.execute_command('start connection')
+            self.update_info_label('connected')
+        elif self.state == 'ready':
+            self.laser_driver.execute_command('close connection')
+            self.update_info_label('disconnected')
     
     @event.action
     def handle_abort_clicked(self):
+        self.laser_driver.abort()
         self.update_info_label('abort')
     
     @event.action
     def handle_start_clicked(self):
-        self.update_info_label('start')
+        if self.state == 'ready':
+            contents = {'file': self.gcode_file, 'line': self.gcode_line, 'raw': self.raw_command}
+            self.laser_driver.execute_command(self.current_mode, content=contents[self.current_mode])
+            self.update_info_label('start')
+        elif self.state in {'pause', 'error'}:
+            self.laser_driver.execute_command(self.current_mode)
+            self.update_info_label('resume')
+        elif self.state == 'active':
+            self.laser_driver.pause()
+            self.update_info_label('pause')
         
     @event.action
     def handle_use_gcode_speeds_clicked(self, checked):
@@ -145,7 +171,7 @@ class AppRoot(app.PyComponent):
         elif description_dict.get('action') == 'done':
             pass
         
-    @event.reaction('gcode_file', 'gcode_line', 'raw_command', 'current_mode', 'plot_running', 'simulate', 'settings', 'state')
+    @event.reaction('gcode_file', 'gcode_line', 'raw_command', 'current_mode', 'simulate', 'settings', 'state')
     def property_changed(self, *events):
         for ev in events:
             if ev.type == 'settings':
@@ -192,6 +218,8 @@ class TabPanel(ui.Widget):
     """
     Contains the tabs for the different modes
     """
+    modes = event.Dict({'File mode': 'file', 'Line mode': 'line', 'Raw mode': 'raw'})
+    
     def init(self):
         with ui.TabLayout() as self.tabs:
             self.file_tab = FileTab()
@@ -211,7 +239,7 @@ class TabPanel(ui.Widget):
             
             self.tabs.set_current(old_v)
         elif new_v.title != 'Settings':
-            self.root.set_current_mode(new_v.title)
+            self.root.set_current_mode(self.modes[new_v.title])
             
     @event.action
     def propagate_change(self, name_changed):
@@ -402,8 +430,18 @@ class SettingsTab(ui.Widget):
             self.y_steps_widget.set_text(str(self.root.settings.get('y_steps_per_mm', self.y_steps_widget.text)))
             self.fast_speed_widget.set_text(str(self.root.settings.get('fast_movement_speed', self.fast_speed_widget.text)))
             self.engrave_speed_widget.set_text(str(self.root.settings.get('engraving_movement_speed', self.engrave_speed_widget.text)))
-        
 
+class StreamToInfoLabel(object):
+    def __init__(self, write_to_info_label_method):
+        self.write_to_info_label_method = write_to_info_label_method
+    
+    def write(self, s):
+        if callable(self.write_to_info_label_method) and s.strip():
+            self.write_to_info_label_method(s)
+    
+    def flush(self):
+        pass
+ 
 #class Example(ui.Widget):
 #
 #    def init(self):
