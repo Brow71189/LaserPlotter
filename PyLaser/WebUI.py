@@ -66,7 +66,7 @@ class AppRoot(app.PyComponent):
                     'engraving_movement_speed': self.laser_driver.engraving_movement_speed,
                     'use_gcode_speeds': self.laser_driver.use_gcode_speeds}
         states = { 'idle': [('start_button.text', 'Start plot'),
-                            ('start_button.disabled', True),
+                            ('start_button.disabled', False),
                             ('abort_button.text', 'Abort plot'),
                             ('abort_button.disabled', True),
                             ('connect_button.text', 'Connect to plotter'),
@@ -101,6 +101,10 @@ class AppRoot(app.PyComponent):
         self._mutate_states(states, 'set')
         
     @event.action
+    def on_raw_text_changed(self, text):
+        self._mutate_raw_command(text)
+        
+    @event.action
     def set_current_mode(self, mode):
         self._mutate_current_mode(mode)
         self.update_info_label(self.current_mode)
@@ -121,7 +125,10 @@ class AppRoot(app.PyComponent):
     
     @event.action
     def handle_start_clicked(self):
-        if self.state == 'ready':
+        if self.current_mode == 'raw':
+            print(self.raw_command)
+            self.propagate_change(self.raw_command)
+        elif self.state == 'ready':
             contents = {'file': self.gcode_file, 'line': self.gcode_line, 'raw': self.raw_command}
             self.laser_driver.execute_command(self.current_mode, content=contents[self.current_mode])
             self.update_info_label('start')
@@ -299,10 +306,18 @@ class PlotPanel(ui.Widget):
         with ui.VFix():
             self.drawing = Drawing()
             
-
     @event.action
     def propagate_change(self, name_changed):
-        pass
+        if name_changed.startswith('move cursor:'):
+            pos_str = name_changed[12:]
+            pos = pos_str.split()
+            print(pos)
+            self.drawing.move_cursor((int(pos[0]), int(pos[1])))
+        elif name_changed.startswith('line to:'):
+            pos_str = name_changed[8:]
+            pos = pos_str.split()
+            print(pos)
+            self.drawing.draw_line((int(pos[0]), int(pos[1])))
 
 class FileTab(ui.Widget):
     """
@@ -382,8 +397,12 @@ class RawTab(ui.Widget):
         with ui.VBox():
             ui.HBox(flex=1)
             with ui.HBox(flex=0):
-                self.gcode_line = ui.LineEdit(flex=3, placeholder_text='e.g. XA1000')
+                self.raw_command = ui.LineEdit(flex=3, placeholder_text='e.g. XA1000')
             ui.HBox(flex=4)
+    
+    @event.reaction('raw_command.user_text')
+    def _text_changed(self, *events):
+        self.root.on_raw_text_changed(self.raw_command.user_text)
             
     @event.action
     def propagate_change(self, name_changed):
@@ -451,24 +470,25 @@ class Drawing(ui.CanvasWidget):
     def init(self):
         super().init()
         self.ctx = self.node.getContext('2d')
-        self.set_capture_mouse(1)
         self._last_pos = (0, 0)
 
-    @event.reaction('mouse_move')
-    def on_move(self, *events):
-        for ev in events:
-            self.ctx.beginPath()
-            self.ctx.strokeStyle = '#080'
-            self.ctx.lineWidth = 3
-            self.ctx.lineCap = 'round'
-            self.ctx.moveTo(*self._last_pos)
-            self.ctx.lineTo(*ev.pos)
-            self.ctx.stroke()
-            self._last_pos = ev.pos
+    def draw_line(self, pos):
+        last_pos = self._last_pos
+        self.move_cursor(pos)
+        self.ctx.beginPath()
+        self.ctx.strokeStyle = 'black'
+        self.ctx.lineWidth = 1
+        self.ctx.lineCap = 'round'
+        self.ctx.moveTo(*last_pos)
+        self.ctx.lineTo(*pos)
+        self.ctx.stroke()
 
-    @event.reaction('mouse_down')
-    def on_down(self, *events):
-        self._last_pos = events[-1].pos
+    def move_cursor(self, pos):
+        self.ctx.fillStyle = 'white'
+        self.ctx.fillRect(self._last_pos[0]-3, self._last_pos[1]-3, 6, 6)
+        self._last_pos = pos
+        self.ctx.fillStyle = 'red'
+        self.ctx.fillRect(self._last_pos[0]-3, self._last_pos[1]-3, 6, 6)
  
 #class Example(ui.Widget):
 #
