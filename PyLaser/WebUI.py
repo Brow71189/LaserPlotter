@@ -294,7 +294,12 @@ class ControlPanel(ui.Widget):
 class PlotPanel(ui.Widget):
     """
     This class contains the panel where the simulated plot is drawn
-    """
+    """                
+    def init(self):
+        with ui.VFix():
+            self.drawing = Drawing()
+            
+
     @event.action
     def propagate_change(self, name_changed):
         pass
@@ -441,6 +446,29 @@ class StreamToInfoLabel(object):
     
     def flush(self):
         pass
+
+class Drawing(ui.CanvasWidget):
+    def init(self):
+        super().init()
+        self.ctx = self.node.getContext('2d')
+        self.set_capture_mouse(1)
+        self._last_pos = (0, 0)
+
+    @event.reaction('mouse_move')
+    def on_move(self, *events):
+        for ev in events:
+            self.ctx.beginPath()
+            self.ctx.strokeStyle = '#080'
+            self.ctx.lineWidth = 3
+            self.ctx.lineCap = 'round'
+            self.ctx.moveTo(*self._last_pos)
+            self.ctx.lineTo(*ev.pos)
+            self.ctx.stroke()
+            self._last_pos = ev.pos
+
+    @event.reaction('mouse_down')
+    def on_down(self, *events):
+        self._last_pos = events[-1].pos
  
 #class Example(ui.Widget):
 #
