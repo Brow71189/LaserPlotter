@@ -6,31 +6,12 @@ Laser Plotter Driver
 import serial
 from serial import SerialException
 import numpy as np
-import argparse
+#import argparse
 import configparser
 import os
 import logging
 from io import StringIO
 import threading
-
-####################### settings ###########################################
-arduino_serial_port = '/dev/ttyACM0'
-arduino_serial_baudrate = 115200
-y_steps_per_mm = 11.77
-x_steps_per_mm = 378.21
-y_speed = 5 # in mm/s
-x_speed = 5 # in mm/s
-resolution = 150 #dpi
-use_gcode_speeds = False
-fast_movement_speed = 20 # mm/s
-engraving_movement_speed = 2 # mm/s
-motor_ids = {
-             'x': 'XA',
-             'y': 'XB',
-             'z': 'L'
-             }
-############################################################################
-
 
 class LaserDriver(object):
     __motor_ids = {
@@ -518,7 +499,7 @@ class LaserDriver(object):
             last_y = 0
             for i in np.arange(0, line_length+1/self._resolution_mm, 1/self._resolution_mm):
                 if np.abs(last_x - i*np.cos(angle)) > 1/self._resolution_mm:
-                    step = int(np.rint(i*np.cos(angle) * x_steps_per_mm)) + self._current_steps_x
+                    step = int(np.rint(i*np.cos(angle) * self.x_steps_per_mm)) + self._current_steps_x
                     if step == 0:
                         step = 1
                     if len(steps) > 0 and steps[-1][0] == 'x':
@@ -527,7 +508,7 @@ class LaserDriver(object):
                         steps.append(('x', step))
                     last_x = i*np.cos(angle)
                 if np.abs(last_y - i*np.sin(angle)) > 1/self._resolution_mm:
-                    step = int(np.rint(i*np.sin(angle) * y_steps_per_mm)) + self._current_steps_y
+                    step = int(np.rint(i*np.sin(angle) * self.y_steps_per_mm)) + self._current_steps_y
                     if step == 0:
                         step = 1
                     if len(steps) > 0 and steps[-1][0] == 'y':
@@ -536,8 +517,8 @@ class LaserDriver(object):
                         steps.append(('y', step))
                     last_y = i*np.sin(angle)
                     
-        x_step = int(np.rint(x*x_steps_per_mm))
-        y_step = int(np.rint(y*y_steps_per_mm))
+        x_step = int(np.rint(x*self.x_steps_per_mm))
+        y_step = int(np.rint(y*self.y_steps_per_mm))
         if x_step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
             x_step = 1
         if y_step == 0:
@@ -593,20 +574,20 @@ class LaserDriver(object):
             steps.append(('z', 1 if z < 0 else 0))
         for i in np.arange(angle_step, angle_delta+angle_step, angle_step):
             if np.abs(last_x - (c_x + radius*np.cos(current_angle+i))) > 1/self._resolution_mm:
-                step = int(np.rint((c_x + radius*np.cos(current_angle+i)) * x_steps_per_mm))            
+                step = int(np.rint((c_x + radius*np.cos(current_angle+i)) * self.x_steps_per_mm))            
                 if step == 0:
                     step = 1
                 steps.append(('x', step))
-                last_x = step/x_steps_per_mm
+                last_x = step/self.x_steps_per_mm
             if np.abs(last_y - (c_y + radius*np.sin(current_angle+i))) > 1/self._resolution_mm:
-                step = int(np.rint((c_y + radius*np.sin(current_angle+i)) * y_steps_per_mm))
+                step = int(np.rint((c_y + radius*np.sin(current_angle+i)) * self.y_steps_per_mm))
                 if step == 0:
                     step = 1
                 steps.append(('y', step))
-                last_y = step/y_steps_per_mm
+                last_y = step/self.y_steps_per_mm
                 
-        x_step = int(np.rint(x*x_steps_per_mm))
-        y_step = int(np.rint(y*y_steps_per_mm))
+        x_step = int(np.rint(x*self.x_steps_per_mm))
+        y_step = int(np.rint(y*self.y_steps_per_mm))
         if x_step == 0: # Make sure we don't send 0 to the arduino because that will be interpreted as no data received
             x_step = 1
         if y_step == 0:
@@ -618,7 +599,7 @@ class LaserDriver(object):
         self._steps = steps
         
     def start_connection(self):
-        os.system('stty -F {:s} -hupcl'.format(arduino_serial_port))
+        os.system('stty -F {:s} -hupcl'.format(self.serial_port))
         try:
             self._ser = serial.Serial(self.serial_port, self.serial_baudrate, timeout=0.1)
             self._ser.reset_input_buffer()
