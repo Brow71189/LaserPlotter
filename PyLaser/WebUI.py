@@ -28,17 +28,18 @@ class AppRoot(app.PyComponent):
     gcode_line = event.StringProp()
     raw_command = event.StringProp()
     current_mode = event.StringProp('file')
-    state = event.StringProp('idle')
-    #plot_running = event.BoolProp()
-    simulate = event.BoolProp()
     settings = event.DictProp()#{'resolution': 150, 'serial_port': 1, 'serial_baudrate': 19200, 'x_steps_per_mm': 378,
                                #'y_steps_per_mm': 12, 'fast_movement_speed': 10, 'engraving_movement_speed': 2,
                                #'use_gcode_speeds': False}
     states = event.DictProp()
+    simulation_states = event.DictProp()
     
     settings_types = {'resolution': float, 'serial_port': str, 'serial_baudrate': int, 'x_steps_per_mm': float,
                       'y_steps_per_mm': float, 'fast_movement_speed': float, 'engraving_movement_speed': float,
-                      'use_gcode_speeds': bool}
+                      'use_gcode_speeds': bool, 'simulation_mode': int}
+    
+    state_ = event.StringProp('idle', settable=True)
+    simulation_state_ = event.StringProp('idle', settable=True)
     
     def init(self):
         self.laser_driver = LaserDriver.LaserDriver()
@@ -49,6 +50,35 @@ class AppRoot(app.PyComponent):
     @property
     def plot_running(self):
         return event.BoolProp(self.state == 'active')
+    
+    @event.action # This is needed to access plot running over the proxy, since python properties do not work (yet)
+    def get_plot_running(self):
+        return self.plot_running
+    
+    @property
+    def state(self):
+        if self.settings.get('simulation_mode') < 2:
+            return self.state_
+        else:
+            return self.simulation_state_
+        
+    @state.setter
+    def state(self, new_state):
+        if self.settings.get('simulation_mode') < 2:
+            print(new_state)
+            self.set_state_(new_state)
+        else:
+            self.set_simulation_state_(new_state)
+    
+    @event.action
+    def _mutate_state(self, new_state):
+        self.state = new_state
+        self.emit('state', info={'new_value': new_state})
+        
+    # This is needed to access state over the proxy, since python properties do not work (yet)
+    
+    def get_state(self):
+        return self.state
         
     @event.action
     def initialize_UI(self):
@@ -64,9 +94,10 @@ class AppRoot(app.PyComponent):
                     'y_steps_per_mm': self.laser_driver.y_steps_per_mm,
                     'fast_movement_speed': self.laser_driver.fast_movement_speed,
                     'engraving_movement_speed': self.laser_driver.engraving_movement_speed,
-                    'use_gcode_speeds': self.laser_driver.use_gcode_speeds}
+                    'use_gcode_speeds': self.laser_driver.use_gcode_speeds,
+                    'simulation_mode': self.laser_driver.simulation_mode}
         states = { 'idle': [('start_button.text', 'Start plot'),
-                            ('start_button.disabled', False),
+                            ('start_button.disabled', True),
                             ('abort_button.text', 'Abort plot'),
                             ('abort_button.disabled', True),
                             ('connect_button.text', 'Connect to plotter'),
@@ -97,8 +128,36 @@ class AppRoot(app.PyComponent):
                              ('connect_button.disabled', True)]
                    }
         
+        simulation_states = { 'idle': [('start_button.text', 'Start plot'),
+                            ('start_button.disabled', True),
+                            ('abort_button.text', 'Abort plot'),
+                            ('abort_button.disabled', True),
+                            ('connect_button.disabled', True)],
+                   'ready': [('start_button.text', 'Start plot'),
+                             ('start_button.disabled', False),
+                             ('abort_button.text', 'Abort plot'),
+                             ('abort_button.disabled', True),
+                             ('connect_button.disabled', True)],
+                   'active': [('start_button.text', 'Pause plot'),
+                              ('start_button.disabled', False),
+                              ('abort_button.text', 'Abort plot'),
+                              ('abort_button.disabled', False),
+                              ('connect_button.disabled', True)],
+                   'error': [('start_button.text', 'Resume plot'),
+                             ('start_button.disabled', False),
+                             ('abort_button.text', 'Abort plot'),
+                             ('abort_button.disabled', False),
+                             ('connect_button.disabled', True)],
+                   'pause': [('start_button.text', 'Resume plot'),
+                             ('start_button.disabled', False),
+                             ('abort_button.text', 'Abort plot'),
+                             ('abort_button.disabled', False),
+                             ('connect_button.disabled', True)]
+                   }
+        
         self._mutate_settings(settings,'set')
         self._mutate_states(states, 'set')
+        self._mutate_simulation_states(simulation_states, 'set')
         
     @event.action
     def on_raw_text_changed(self, text):
@@ -157,13 +216,19 @@ class AppRoot(app.PyComponent):
         except ValueError:
             self.propagate_change('settings')
         except KeyError as e:
-            print(e)
+            self.update_info_label(str(e))
         else:
             if old_value is not None and new_value != old_value:
                 self._mutate_settings({setting_name: new_value}, 'replace')
+                
+    @event.action
+    def handle_state_changed(self, new_state):
+        self._mutate_state(new_state)
+        self.update_info_label(new_state)
     
     @event.action
     def update_info_label(self, text):
+        print(text)
         self.view.update_info_label(text)
         
     @event.action
@@ -178,7 +243,7 @@ class AppRoot(app.PyComponent):
         elif description_dict.get('action') == 'done':
             pass
         
-    @event.reaction('gcode_file', 'gcode_line', 'raw_command', 'current_mode', 'simulate', 'settings', 'state')
+    @event.reaction('gcode_file', 'gcode_line', 'raw_command', 'current_mode', 'settings', 'state')
     def property_changed(self, *events):
         for ev in events:
             if ev.type == 'settings':
@@ -204,12 +269,11 @@ class View(ui.Widget):
     }
     """
     def init(self):
-        with ui.HSplit():
-            with ui.VBox(flex=2):
-                self.tab_panel = TabPanel(flex=3)
-                self.control_panel = ControlPanel(flex=1)
-                    
-            self.plot_panel = PlotPanel(flex=1)
+        with ui.VBox():
+            with ui.HSplit(flex=3):
+                self.tab_panel = TabPanel(flex=2)
+                self.plot_panel = PlotPanel(flex=1)
+            self.control_panel = ControlPanel(flex=1)
     
     @event.action
     def update_info_label(self, text):
@@ -240,8 +304,7 @@ class TabPanel(ui.Widget):
         new_v = events[-1].new_value
         if old_v is None or new_v is None:
             return
-        
-        if (self.root.plot_running and old_v.title != new_v.title and new_v.title != 'Settings' and
+        if (self.root.get_plot_running() and old_v.title != new_v.title and new_v.title != 'Settings' and
             new_v.title != self.root.current_mode):
             
             self.tabs.set_current(old_v)
@@ -267,6 +330,9 @@ class ControlPanel(ui.Widget):
                 ui.Widget(flex=1)
                 self.abort_button = ui.Button(flex=1, text='Abort plot', title='abort')
                 self.start_button = ui.Button(flex=1, text='Start plot', title='start')
+                ui.Widget(flex=1)
+                self.only_simulate_checkbox = ui.ToggleButton(flex=0, text='Simulate', title='simulate')
+                self.live_view_checkbox = ui.ToggleButton(flex=0, text='Live view', title='live')
             
             self.info_label = ui.Label(flex=1, wrap=True, text='Status Label')
     
@@ -287,15 +353,45 @@ class ControlPanel(ui.Widget):
             self.root.handle_abort_clicked()
         elif ev.source.title == 'start':
             self.root.handle_start_clicked()
+    
+    @event.reaction('only_simulate_checkbox.checked', 'live_view_checkbox.checked')  
+    def _button_toggled(self, *events):
+        if self.only_simulate_checkbox.checked:
+            self.root.handle_setting_changed('simulation_mode', 2)
+            if self.root.get_state() == 'idle':
+                self.root.handle_state_changed('ready')
+            print(self.root.get_state())
+        elif self.live_view_checkbox.checked:
+            self.root.handle_setting_changed('simulation_mode', 1)
+            self.root.handle_state_changed(self.root.get_state())
+        else:
+            self.root.handle_setting_changed('simulation_mode', 0)
+            self.root.handle_state_changed(self.root.get_state())
             
     @event.action
     def propagate_change(self, name_changed):
         if name_changed == 'state':
-            new_properties = self.root.states.get(self.root.state)
-            if new_properties is not None:
-                for key, value in new_properties:
-                    element, prop = key.split('.')
-                    getattr(getattr(self, element), 'set_' + prop)(value)
+            if self.root.settings.get('simulation_mode') < 2:
+                new_properties = self.root.states.get(self.root.state)
+                if new_properties is not None:
+                    for key, value in new_properties:
+                        element, prop = key.split('.')
+                        getattr(getattr(self, element), 'set_' + prop)(value)
+            else:
+                new_properties = self.root.simulation_states.get(self.root.state)
+                if new_properties is not None:
+                    for key, value in new_properties:
+                        element, prop = key.split('.')
+                        getattr(getattr(self, element), 'set_' + prop)(value)
+        elif name_changed == 'settings':
+            if self.root.settings.get('simulation_mode') == 2:
+                self.only_simulate_checkbox.set_checked(True)
+            elif self.root.settings.get('simulation_mode') == 1:
+                self.only_simulate_checkbox.set_checked(False)
+                self.live_view_checkbox.set_checked(True)
+            elif self.root.settings.get('simulation_mode') == 0:
+                self.only_simulate_checkbox.set_checked(False)
+                self.live_view_checkbox.set_checked(False)
             
 
 class PlotPanel(ui.Widget):

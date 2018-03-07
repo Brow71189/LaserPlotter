@@ -47,6 +47,33 @@ class LaserDriver(object):
                          'raw_command': None,
                          '_thread': None},
                 }
+                
+    __simulation_states = {
+                'active': {'_pause_move': False,
+                           '_abort_move': False},
+                'pause': {'_pause_move': True,
+                          '_abort_move': False,
+                          '_thread': None}, 
+                'error': {'_pause_move': False,
+                          '_abort_move': False,
+                          '_thread': None},
+                'ready': {'_current_line': None,
+                         '_target_position': {},
+                         '_steps': [],
+                         '_current_counter': 0,
+                         'gcode_file': None,
+                         'gcode_line': None,
+                         'raw_command': None,
+                         '_thread': None},
+                'idle': {'_current_line': None,
+                         '_target_position': {},
+                         '_steps': [],
+                         '_current_counter': 0,
+                         'gcode_file': None,
+                         'gcode_line': None,
+                         'raw_command': None,
+                         '_thread': None},
+                }
               
     __done = {
               'raw': {'raw_command': None,
@@ -64,6 +91,7 @@ class LaserDriver(object):
     def __init__(self):
         
         self._state = 'idle'
+        self._simulation_state = 'idle'
         self._current_line = None
         self._abort_move = False
         self._pause_move = False
@@ -86,6 +114,7 @@ class LaserDriver(object):
         self.use_gcode_speeds = False
         self.fast_movement_speed = 20 # mm/s
         self.engraving_movement_speed = 2 # mm/s
+        self.simulation_mode = 0 # 0: No simulation, 1: Live view, 2: only simulate
         self.gcode_file = None
         self.gcode_line = None
         self.raw_command = None     
@@ -97,6 +126,8 @@ class LaserDriver(object):
         
         self.load_config()
         
+        self.state = 'idle'
+        
     @property
     def resolution(self):
         return self._resolution_mm * 25.4
@@ -107,19 +138,30 @@ class LaserDriver(object):
         
     @property
     def state(self):
-        return self._state
+        return self._state if self.simulation_mode < 2 else self._simulation_state
     
     @state.setter
     def state(self, state):
-        if state == self._state:
-            return
-        
-        state_parameters = self.__states.get(state, dict())
-        for key, value in state_parameters.items():
-            setattr(self, key, value)
-        self._state = state
-        if callable(self.callback_function):
-            self.callback_function({'action': 'set', 'parameter': 'state', 'value': state})
+        if self.simulation_mode < 2:
+            if state == self._state:
+                return
+            
+            state_parameters = self.__states.get(state, dict())
+            for key, value in state_parameters.items():
+                setattr(self, key, value)
+            self._state = state
+            if callable(self.callback_function):
+                self.callback_function({'action': 'set', 'parameter': 'state', 'value': state})
+        else:
+            if state == self._simulation_state:
+                return
+            
+            state_parameters = self.__simulation_states.get(state, dict())
+            for key, value in state_parameters.items():
+                setattr(self, key, value)
+            self._simulation_state = state
+            if callable(self.callback_function):
+                self.callback_function({'action': 'set', 'parameter': 'state', 'value': state})
             
     def abort(self):
         self._abort_move = True
@@ -200,9 +242,9 @@ class LaserDriver(object):
                 message = message[:-1]
                 self.logger.error(message)
                 raise
-        elif command == 'close connection':
+        elif command == 'close connection' or command == 'close':
             try:
-                self.start_connection()
+                self.close()
             except Exception as e:
                 message = ''
                 for p in e.args:
@@ -212,7 +254,7 @@ class LaserDriver(object):
                 raise
                 
         if run_func is not None:
-            self._thread = threading.Thread(run_func)
+            self._thread = threading.Thread(target=run_func)
             self._thread.start()
         
     def send_raw(self, raw_command=None):
@@ -223,15 +265,21 @@ class LaserDriver(object):
         self.state = 'active'
         command = self.raw_command.encode()
         try:
-            self._ser.write(command)
+            if self.simulation_mode < 2:
+                self._ser.write(command)
         except SerialException:
             self.state = 'error'
             raise
-        else:
-            self._done('raw')
+
         res = b''
-        while self._ser.in_waiting > 0:
-            res += self._ser.read()
+        if self.simulation_mode < 2:
+            while self._ser.in_waiting > 0:
+                res += self._ser.read()
+        # This is to ensure everything works when in simulation mode
+        else:
+            if self.raw_command == 'R':
+                res = b'R'
+        self._done('raw')
         return res.decode()
     
     def check_ready(self):
@@ -449,6 +497,7 @@ class LaserDriver(object):
         parser.set('options', 'use gcode speeds', str(self.use_gcode_speeds))
         parser.set('options', 'fast movement speed', str(self.fast_movement_speed))
         parser.set('options', 'engraving movement speed', str(self.engraving_movement_speed))
+        parser.set('options', 'simulation mode', str(self.simulation_mode))
         for key, value in self.__motor_ids.items():
             parser.set('motor ids', key, value)
         return parser
@@ -465,6 +514,7 @@ class LaserDriver(object):
         self.fast_movement_speed = parser.getfloat('options', 'fast movement speed', fallback=self.fast_movement_speed)
         self.engraving_movement_speed = parser.getfloat('options', 'engraving movement speed',
                                                         fallback=self.engraving_movement_speed)    
+        self.simulation_mode = parser.getint('options', 'simulation mode', fallback=self.simulation_mode)
         for key, value in parser.items(section='motor ids'):
             self.__motor_ids[key] = value
 
