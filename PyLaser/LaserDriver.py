@@ -105,6 +105,7 @@ class LaserDriver(object):
         self._steps = []
         self._current_counter = 0
         self._thread = None
+        self._last_position = {'x': 0, 'y': 0, 'z': 0}
         
         self.serial_port = '/dev/ttyACM0'
         self.serial_baudrate = 115200
@@ -165,6 +166,8 @@ class LaserDriver(object):
             
     def abort(self):
         self._abort_move = True
+        if self._thread is None or not self._thread.is_alive():
+            self.state = 'ready'
         
     def pause(self):
         self._pause_move = True
@@ -178,7 +181,14 @@ class LaserDriver(object):
         elif command == 'line' and self.gcode_file is None:
             self.state = 'ready'
         if callable(self.callback_function):
-            self.callback_function({'action': 'done', 'value': command})
+            if command == 'raw' and self.simulation_mode > 0:
+                position = {}
+                position['x'] = self._last_position['x'] / self.x_steps_per_mm
+                position['y'] = self._last_position['y'] / self.y_steps_per_mm
+                position['z'] = self._last_position['z']
+                self.callback_function({'action': 'done', 'value': command, 'position': position})
+            else:
+                self.callback_function({'action': 'done', 'value': command})
             
     def execute_command(self, command, content=None):
         run_func = None
@@ -277,10 +287,16 @@ class LaserDriver(object):
                 res += self._ser.read()
         # This is to ensure everything works when in simulation mode
         else:
-            if self.raw_command == 'R':
-                res = b'R'
+            res = self._get_simulated_answer(self.raw_command)
         self._done('raw')
         return res.decode()
+    
+    def _get_simulated_answer(self, command):
+        answer = command[0]
+        if command.startswith('P'):
+            answer = '{:d}P'.format(self._current_steps_x if command[1] == 'A' else self._current_steps_y)
+            
+        return answer.encode()
     
     def check_ready(self):
         reply = self.send_raw('R')
@@ -343,6 +359,7 @@ class LaserDriver(object):
                 return
             motor, position = self._steps[counter]
             cmd = '{:s}{:d}\n'.format(self.__motor_ids[motor], position)
+            self._last_position[motor] = position
             res = self.send_raw(cmd)
             if res == 'X':
                 counter += 1
@@ -375,7 +392,7 @@ class LaserDriver(object):
             elif piece.startswith('I'):
                 target_position['i'] = float(piece[1:])
             elif piece.startswith('J'):
-                target_position['i'] = float(piece[1:])
+                target_position['j'] = float(piece[1:])
             elif piece.startswith('F'):
                 target_position['f'] = float(piece[1:])
             else:
@@ -404,8 +421,10 @@ class LaserDriver(object):
         elif self._target_position.get('command') == 'G01':
             self.move_linear(engrave=True)
         elif self._target_position.get('command') == 'G02':
+            print(self._target_position)
             self.move_circular('cw')
         elif self._target_position.get('command') == 'G03':
+            print(self._target_position)
             self.move_circular('ccw')    
         
     def process_line(self, gcode_line=None):
@@ -435,7 +454,7 @@ class LaserDriver(object):
             if not self.state in {'pause', 'error'}:
                 self._done('line')
         finally:
-            self.logger.info('Elapsed time: {:.2f} s'.format(time.time() - starttime))
+            print('Elapsed time: {:.2f} s'.format(time.time() - starttime))
         
     def process_file(self):
         self.state = 'active'
@@ -466,7 +485,7 @@ class LaserDriver(object):
                 raise
                 
         if self.state not in ('error', 'pause'):
-            self.done('file')
+            self._done('file')
 
     def load_config(self):
         parser = configparser.ConfigParser()
@@ -518,7 +537,7 @@ class LaserDriver(object):
         for key, value in parser.items(section='motor ids'):
             self.__motor_ids[key] = value
 
-    def move_linear(self, target_position, engrave=False):
+    def move_linear(self, engrave=False):
         """
         engrave : whether to move as fast as possible or to engrave (move slowly)
         """
