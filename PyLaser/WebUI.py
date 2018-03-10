@@ -593,13 +593,12 @@ class Drawing(ui.CanvasWidget):
         self.strokeWidth = 1
         self.lineCap = 'round'
         self._zoom = 1
-        self._position = (0, self.canvas.height)
+        self._position = (0, 0)
         self._mouse_down_position = None
         self._mouse_down_mouse_position = None
         self._line_paths = None
         self._cursor_paths = None
         self._do_drawing = False
-        #self.ctx.setTransform(self._zoom, 0, 0, -self._zoom, self._position[0], self._position[1])
         
     @event.reaction('mouse_move')
     def _on_mouse_move(self, *events):
@@ -614,7 +613,7 @@ class Drawing(ui.CanvasWidget):
         self._mouse_down_mouse_position = ev.pos
         
     def set_transform(self):
-        self.ctx.setTransform(self._zoom, 0, 0, -self._zoom, self._position[0], self._position[1])
+        self.ctx.setTransform(self._zoom, 0, 0, -self._zoom, self._position[0], self._position[1]+self.canvas.height)
 
     def draw_line(self, pos):
         last_pos = self._last_pos
@@ -663,12 +662,9 @@ class Drawing(ui.CanvasWidget):
             self._zoom += 0.5
         else:
             self._zoom += 1
-#        im = self.ctx.getImageData(0, 0, self.ctx.canvas.width, self.ctx.canvas.width)
         self.set_transform()
-#        self.ctx.clearRect(0, 0, self.ctx.canvas.width, self.ctx.canvas.width)
-        #self.ctx.scale(self._zoom, self._zoom)
-#        self.ctx.putImageData(im, 0, 0)
-        window.requestAnimationFrame(self.draw)
+        if not self._do_drawing:
+            window.requestAnimationFrame(self.draw)
     
     def zoom_out(self):
         if self._zoom > 1:
@@ -678,30 +674,21 @@ class Drawing(ui.CanvasWidget):
         elif self._zoom > 0.33:
             self._zoom -= 0.33
         self.set_transform()
-        window.requestAnimationFrame(self.draw)
+        if not self._do_drawing:
+            window.requestAnimationFrame(self.draw)
  
     def clear(self):
         self._line_paths = []
         self._cursor_paths = []
-        window.requestAnimationFrame(self.draw)
+        if not self._do_drawing:
+            window.requestAnimationFrame(self.draw)
         
     def move(self, x, y):
         self._position = (self._mouse_down_position[0] + x, self._mouse_down_position[1] + y)
         self.set_transform()
         if not self._do_drawing:
             window.requestAnimationFrame(self.draw)
-#class Example(ui.Widget):
-#
-#    def init(self):
-#        with ui.HSplit():
-#            ui.Button(text='foo')
-#            with ui.VBox():
-#                ui.Button(flex=1, text='bar')
-#                ui.Button(flex=1, text='spam')
 
-#example = app.serve(Example)
-#app.export(Example, 'example.html')
-#example = app.serve(Example)
 a = app.App(AppRoot)
 #a.serve()
 #app.start()
