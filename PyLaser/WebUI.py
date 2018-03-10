@@ -67,7 +67,6 @@ class AppRoot(app.PyComponent):
     
     @event.action
     def __state_changed(self, new_state):
-        print('here2')
         self._mutate_state_(new_state)
         self.emit('state_', {'new_value': new_state})
         
@@ -170,14 +169,12 @@ class AppRoot(app.PyComponent):
     
     @event.action
     def handle_abort_clicked(self):
-        print(event.loop)
         self.laser_driver.abort()
         self.update_info_label('abort')
     
     @event.action
     def handle_start_clicked(self):
         if self.current_mode == 'raw':
-            print(self.raw_command)
             self.propagate_change(self.raw_command)
         elif self.state == 'ready':
             contents = {'file': self.gcode_file, 'line': self.gcode_line, 'raw': self.raw_command}
@@ -219,7 +216,6 @@ class AppRoot(app.PyComponent):
     
     @event.action
     def update_info_label(self, text):
-        print(text)
         self.view.update_info_label(text)
         
     @event.action
@@ -242,6 +238,8 @@ class AppRoot(app.PyComponent):
                     movement = 'line to:'
                 command = '{:s}{:g} {:g}'.format(movement, position.get('x', 0), position.get('y', 0))
                 self.propagate_change(command)
+                if description_dict.get('done_event'):
+                    description_dict['done_event'].set()
         
     @event.reaction('gcode_file', 'gcode_line', 'raw_command', 'current_mode', 'settings', 'state_')
     def property_changed(self, *events):
@@ -254,7 +252,6 @@ class AppRoot(app.PyComponent):
                     for key, value in ev.new_value.items():
                         setattr(self.laser_driver, key, value)
                 self.state = self.state
-                print('here')
                 self.propagate_change('settings')
             elif ev.type == 'state_':
                 self.propagate_change('state_')
@@ -395,19 +392,43 @@ class PlotPanel(ui.Widget):
     This class contains the panel where the simulated plot is drawn
     """                
     def init(self):
-        with ui.VFix():
-            self.drawing = Drawing()
+        with ui.VBox():
+            with ui.HBox(flex=0):
+                self.zoom_in_button = ui.Button(flex=0, text='+', title='zoom_in')
+                self.zoom_out_button = ui.Button(flex=0, text='-', title='zoom_out')
+                self.clear_button = ui.Button(flex=0, text='clear', title='clear')
+                ui.Widget(flex=1)
+            with ui.VSplit(flex=1):    
+                self.drawing = Drawing(flex=3)
+                ui.Widget(flex=1)
+        
+        self.drawing.set_transform()
             
     @event.action
     def propagate_change(self, name_changed):
         if name_changed.startswith('move cursor:'):
             pos_str = name_changed[12:]
             pos = pos_str.split()
-            self.drawing.move_cursor((int(pos[0]), int(pos[1])))
+            self.drawing.move_cursor((float(pos[0]), float(pos[1])))
         elif name_changed.startswith('line to:'):
             pos_str = name_changed[8:]
             pos = pos_str.split()
-            self.drawing.draw_line((int(pos[0]), int(pos[1])))
+            self.drawing.draw_line((float(pos[0]), float(pos[1])))
+        elif name_changed == 'state_':
+            if self.root.state_ == 'active':
+                self.drawing.start_drawing()
+            else:
+                self.drawing.stop_drawing()
+    
+    @event.reaction('zoom_in_button.mouse_click', 'zoom_out_button.mouse_click', 'clear_button.mouse_click')
+    def _button_clicked(self, *events):
+        for ev in events:
+            if ev.source.title == 'zoom_in':
+                self.drawing.zoom_in()
+            elif ev.source.title == 'zoom_out':
+                self.drawing.zoom_out()
+            elif ev.source.title == 'clear':
+                self.drawing.clear()
 
 class FileTab(ui.Widget):
     """
@@ -447,7 +468,6 @@ class FileTab(ui.Widget):
     def _convert_gcode_file_to_string(self):
         def _get_string(event):
             self.root.handle_new_gcode_file(event.target.result)
-            print(event.target.result)
         
         if self.open_gcode_widget.file is not None:
             reader = window.FileReader()
@@ -557,29 +577,119 @@ class StreamToInfoLabel(object):
         pass
 
 class Drawing(ui.CanvasWidget):
+    CSS = """
+    .flx-Drawing {border: 3px solid gray;}
+    .flx-Drawing:hover {cursor: all-scroll;}
+    """
     def init(self):
         super().init()
         self.ctx = self.node.getContext('2d')
+        self.canvas = self.ctx.canvas
         self._last_pos = (0, 0)
+        self._last_cursor_pos = (0, 0)
+        self._last_image_data = None
+        self.strokeColor = 'black'
+        self.cursorColor = 'red'
+        self.strokeWidth = 1
+        self.lineCap = 'round'
+        self._zoom = 1
+        self._position = (0, self.canvas.height)
+        self._mouse_down_position = None
+        self._mouse_down_mouse_position = None
+        self._line_paths = None
+        self._cursor_paths = None
+        self._do_drawing = False
+        #self.ctx.setTransform(self._zoom, 0, 0, -self._zoom, self._position[0], self._position[1])
+        
+    @event.reaction('mouse_move')
+    def _on_mouse_move(self, *events):
+        for ev in events:
+            if 1 in ev.buttons:
+                self.move(ev.pos[0] - self._mouse_down_mouse_position[0], ev.pos[1] - self._mouse_down_mouse_position[1])
+                
+    @event.reaction('mouse_down')
+    def  _on_mouse_down(self, *events):
+        ev = events[-1]
+        self._mouse_down_position = self._position
+        self._mouse_down_mouse_position = ev.pos
+        
+    def set_transform(self):
+        self.ctx.setTransform(self._zoom, 0, 0, -self._zoom, self._position[0], self._position[1])
 
     def draw_line(self, pos):
         last_pos = self._last_pos
+        if self._line_paths is None:
+            path = window.Path2D()
+        else:
+            path = window.Path2D(self._line_paths)
+        path.moveTo(*pos)
+        path.lineTo(*last_pos)
+        self._line_paths = path
         self.move_cursor(pos)
-        self.ctx.beginPath()
-        self.ctx.strokeStyle = 'black'
-        self.ctx.lineWidth = 1
-        self.ctx.lineCap = 'round'
-        self.ctx.moveTo(*last_pos)
-        self.ctx.lineTo(*pos)
-        self.ctx.stroke()
 
     def move_cursor(self, pos):
-        self.ctx.fillStyle = 'white'
-        self.ctx.fillRect(self._last_pos[0]-3, self._last_pos[1]-3, 6, 6)
         self._last_pos = pos
-        self.ctx.fillStyle = 'red'
-        self.ctx.fillRect(self._last_pos[0]-3, self._last_pos[1]-3, 6, 6)
+        self._last_cursor_pos = pos
+        path = window.Path2D()
+        path.rect(self._last_pos[0]-2, self._last_pos[1]-2, 4, 4)
+        self._cursor_paths = path
+        
+    def draw(self):
+        if self._do_drawing:
+            window.window.requestAnimationFrame(self.draw)
+        self.ctx.setTransform(1, 0, 0, 1, 0, 0)
+        self.ctx.clearRect(0, 0, self.ctx.canvas.width, self.ctx.canvas.height)
+        self.set_transform()
+        self.ctx.lineWidth = self.strokeWidth
+        self.ctx.lineCap = self.lineCap
+        self.ctx.strokeStyle = self.strokeColor
+        if self._line_paths:
+            self.ctx.stroke(self._line_paths)
+        self.ctx.fillStyle = self.cursorColor
+        if self._cursor_paths:
+            self.ctx.fill(self._cursor_paths)
+        
+    def stop_drawing(self):
+        self._do_drawing = False
+        
+    def start_drawing(self):
+        self._do_drawing = True
+        self.draw()
+        
+    def zoom_in(self):
+        if self._zoom <= 0.33:
+            self._zoom += 0.33
+        elif self._zoom <= 0.5:
+            self._zoom += 0.5
+        else:
+            self._zoom += 1
+#        im = self.ctx.getImageData(0, 0, self.ctx.canvas.width, self.ctx.canvas.width)
+        self.set_transform()
+#        self.ctx.clearRect(0, 0, self.ctx.canvas.width, self.ctx.canvas.width)
+        #self.ctx.scale(self._zoom, self._zoom)
+#        self.ctx.putImageData(im, 0, 0)
+        window.requestAnimationFrame(self.draw)
+    
+    def zoom_out(self):
+        if self._zoom > 1:
+            self._zoom -= 1
+        elif self._zoom > 0.5:
+            self._zoom -= 0.5
+        elif self._zoom > 0.33:
+            self._zoom -= 0.33
+        self.set_transform()
+        window.requestAnimationFrame(self.draw)
  
+    def clear(self):
+        self._line_paths = []
+        self._cursor_paths = []
+        window.requestAnimationFrame(self.draw)
+        
+    def move(self, x, y):
+        self._position = (self._mouse_down_position[0] + x, self._mouse_down_position[1] + y)
+        self.set_transform()
+        if not self._do_drawing:
+            window.requestAnimationFrame(self.draw)
 #class Example(ui.Widget):
 #
 #    def init(self):
@@ -595,5 +705,6 @@ class Drawing(ui.CanvasWidget):
 a = app.App(AppRoot)
 #a.serve()
 #app.start()
+#a.export(filename='C:/Users/Andi/Downloads/AppRoot.html')
 a.launch()
 app.run()

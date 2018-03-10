@@ -12,6 +12,7 @@ import os
 import logging
 from io import StringIO
 import threading
+import time
 
 class LaserDriver(object):
     __motor_ids = {
@@ -166,13 +167,17 @@ class LaserDriver(object):
             
     def abort(self):
         self._abort_move = True
-        if self._thread is None or not self._thread.is_alive():
+        if self._thread is None:
             self.state = 'ready'
+        else:
+            self._thread.join(timeout=0.2)
+            if not self._thread.is_alive():
+                self.state = 'ready'
         
     def pause(self):
         self._pause_move = True
             
-    def _done(self, command):
+    def _done(self, command, content=''):
         done_parameters = self.__done.get(command, dict())
         for key, value in done_parameters.items():
             setattr(self, key, value)
@@ -181,12 +186,14 @@ class LaserDriver(object):
         elif command == 'line' and self.gcode_file is None:
             self.state = 'ready'
         if callable(self.callback_function):
-            if command == 'raw' and self.simulation_mode > 0:
+            if command == 'raw' and self.simulation_mode > 0 and content.startswith('X'):
                 position = {}
                 position['x'] = self._last_position['x'] / self.x_steps_per_mm
                 position['y'] = self._last_position['y'] / self.y_steps_per_mm
                 position['z'] = self._last_position['z']
                 self.callback_function({'action': 'done', 'value': command, 'position': position})
+                if self.simulation_mode > 1:
+                    time.sleep(0.005)
             else:
                 self.callback_function({'action': 'done', 'value': command})
             
@@ -288,7 +295,8 @@ class LaserDriver(object):
         # This is to ensure everything works when in simulation mode
         else:
             res = self._get_simulated_answer(self.raw_command)
-        self._done('raw')
+        self._done('raw', raw_command)
+        #print(raw_command, len(raw_command))
         return res.decode()
     
     def _get_simulated_answer(self, command):
@@ -421,10 +429,8 @@ class LaserDriver(object):
         elif self._target_position.get('command') == 'G01':
             self.move_linear(engrave=True)
         elif self._target_position.get('command') == 'G02':
-            print(self._target_position)
             self.move_circular('cw')
         elif self._target_position.get('command') == 'G03':
-            print(self._target_position)
             self.move_circular('ccw')    
         
     def process_line(self, gcode_line=None):
@@ -433,7 +439,6 @@ class LaserDriver(object):
         if self.gcode_line is None:
             return
         self.state = 'active'
-        import time
         starttime = time.time()
         line = self.gcode_line.upper()
         line = line.strip()
@@ -446,7 +451,8 @@ class LaserDriver(object):
         self.calculate_steps()
 
         try:
-            self.execute_move()
+            if len(self._steps) > 0:
+                self.execute_move()
         except RuntimeError:
             self.state = 'error'
             raise
@@ -454,7 +460,8 @@ class LaserDriver(object):
             if not self.state in {'pause', 'error'}:
                 self._done('line')
         finally:
-            print('Elapsed time: {:.2f} s'.format(time.time() - starttime))
+            if self.gcode_file is None:
+                print('Elapsed time: {:.2f} s'.format(time.time() - starttime))
         
     def process_file(self):
         self.state = 'active'
@@ -468,8 +475,8 @@ class LaserDriver(object):
 
         for line in self.gcode_file:
             if self._abort_move:
-                self.state = 'ready'
-                return
+                #self.state = 'ready'
+                break
             
             self._current_line = line
             self.gcode_line = line
