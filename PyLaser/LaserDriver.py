@@ -258,6 +258,7 @@ class LaserDriver(object):
                     message += str(p) + ' '
                 message = message[:-1]
                 self.logger.error(message)
+                self.state = 'idle'
                 raise
         elif command == 'close connection' or command == 'close':
             try:
@@ -290,8 +291,10 @@ class LaserDriver(object):
 
         res = b''
         if self.simulation_mode < 2:
-            while self._ser.in_waiting > 0:
+            while True:
                 res += self._ser.read()
+                if self._ser.in_waiting <= 0:
+                    break
         # This is to ensure everything works when in simulation mode
         else:
             res = self._get_simulated_answer(self.raw_command)
@@ -677,7 +680,7 @@ class LaserDriver(object):
     def start_connection(self):
         os.system('stty -F {:s} -hupcl'.format(self.serial_port))
         try:
-            self._ser = serial.Serial(self.serial_port, self.serial_baudrate, timeout=0.1)
+            self._ser = serial.Serial(self.serial_port, self.serial_baudrate, timeout=0.2)
             self._ser.reset_input_buffer()
             self._ser.reset_output_buffer()
         except SerialException:
@@ -698,19 +701,20 @@ class LaserDriver(object):
         else:
             self.close()
             raise RuntimeError('Plotter did not pass ready check. Check the connection and try to reconnect.')
-            
+        
+        self._ser.timeout = 300
+        
         res = self.send_raw('V0')
 
         if res != 'V':
             raise RuntimeError('Could not set verbosity. Returned "{}" instead of "V"!'.format(res))
-        self._ser.timeout = 300
         
     def close(self):
+        self.save_config()
         if self._ser is not None:
             self._ser.close()
             self._ser = None
         self.state = 'idle'
-        self.save_config()
         
 #def main():
 #    global ser

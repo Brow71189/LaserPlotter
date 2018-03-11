@@ -156,46 +156,46 @@ class AppRoot(app.PyComponent):
     @event.action
     def set_current_mode(self, mode):
         self._mutate_current_mode(mode)
-        self.update_info_label(self.current_mode)
+        #self.update_info_label(self.current_mode)
         
     @event.action
     def handle_connect_clicked(self):
         if self.state == 'idle':
             self.laser_driver.execute_command('start connection')
-            self.update_info_label('connected')
+            #self.update_info_label('connected')
         elif self.state == 'ready':
             self.laser_driver.execute_command('close connection')
-            self.update_info_label('disconnected')
+            #self.update_info_label('disconnected')
     
     @event.action
     def handle_abort_clicked(self):
         self.laser_driver.abort()
-        self.update_info_label('abort')
+        #self.update_info_label('abort')
     
     @event.action
     def handle_start_clicked(self):
-        if self.current_mode == 'raw':
-            self.propagate_change(self.raw_command)
-        elif self.state == 'ready':
+#        if self.current_mode == 'raw':
+#            self.propagate_change(self.raw_command)
+        if self.state == 'ready':
             contents = {'file': self.gcode_file, 'line': self.gcode_line, 'raw': self.raw_command}
             self.laser_driver.execute_command(self.current_mode, content=contents[self.current_mode])
-            self.update_info_label('start')
+            #self.update_info_label('start')
         elif self.state in {'pause', 'error'}:
             self.laser_driver.execute_command(self.current_mode)
-            self.update_info_label('resume')
+            #self.update_info_label('resume')
         elif self.state == 'active':
             self.laser_driver.pause()
-            self.update_info_label('pause')
+            #self.update_info_label('pause')
         
     @event.action
     def handle_use_gcode_speeds_clicked(self, checked):
         self._mutate_settings({'use_gcode_speeds': checked}, 'replace')
-        self.update_info_label('use gcode speeds {}'.format('ON' if checked else 'OFF'))
+        #self.update_info_label('use gcode speeds {}'.format('ON' if checked else 'OFF'))
 
     @event.action
     def handle_new_gcode_file(self, file_content):
         self._mutate_gcode_file(file_content)
-        self.update_info_label('new gcode file arrived')
+        #self.update_info_label('new gcode file arrived')
     
     @event.action
     def handle_setting_changed(self, setting_name, new_value):
@@ -257,7 +257,7 @@ class AppRoot(app.PyComponent):
                 self.propagate_change('settings')
             elif ev.type == 'state_':
                 self.propagate_change('state_')
-                self.update_info_label(ev.new_value)
+                #self.update_info_label(ev.new_value)
     
 class View(ui.Widget):
     """
@@ -338,7 +338,7 @@ class ControlPanel(ui.Widget):
                 self.only_simulate_checkbox = ui.ToggleButton(flex=0, text='Simulate', title='simulate')
                 self.live_view_checkbox = ui.ToggleButton(flex=0, text='Live view', title='live')
             
-            self.info_label = ui.Label(flex=1, wrap=True, text='Status Label')
+            self.info_label = ui.Label(flex=1, wrap=True, text='')
     
     @event.action
     def update_info_label(self, text):
