@@ -5,7 +5,7 @@ Created on Sat Feb 17 10:50:14 2018
 @author: Andi
 """
 
-from flexx import app, event, ui
+from flexx import app, event, ui, config
 
 import sys, os
 sys.path.append(os.path.dirname(__file__))
@@ -738,9 +738,12 @@ class Drawing(ui.CanvasWidget):
         if not self._do_drawing:
             window.requestAnimationFrame(self.draw)
 
+config.hostname = 'localhost'
+config.port = 80
+
 a = app.App(AppRoot)
-#a.serve()
-#app.start()
+a.serve()
+app.start()
 #a.export(filename='C:/Users/Andi/Downloads/AppRoot.html')
-a.launch()
-app.run()
+#a.launch()
+#app.run()
