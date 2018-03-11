@@ -208,7 +208,7 @@ class LaserDriver(object):
                 self.raw_command = content
             def run():
                 try:
-                    self.send_raw()
+                    res = self.send_raw()
                 except Exception as e:
                     message = ''
                     for p in e.args:
@@ -216,10 +216,13 @@ class LaserDriver(object):
                     message = message[:-1]
                     self.logger.error(message)
                     raise
+                else:
+                    self.logger.info(res)
             run_func = run
         elif command == 'line':
             if content is not None:
                 self.gcode_line = content
+            print(self.gcode_line)
             def run():
                 try:
                     self.process_line()
@@ -272,6 +275,14 @@ class LaserDriver(object):
                 raise
                 
         if run_func is not None:
+            if self._ser is not None:
+                try:
+                    self._ser.reset_input_buffer()
+                    self._ser.reset_output_buffer()
+                except SerialException as e:
+                    self.state = 'error'
+                    self.logger.error(str(e))
+                    raise
             self._thread = threading.Thread(target=run_func)
             self._thread.start()
         
@@ -288,18 +299,25 @@ class LaserDriver(object):
         except SerialException:
             self.state = 'error'
             raise
-
         res = b''
         if self.simulation_mode < 2:
-            while True:
-                res += self._ser.read()
-                if self._ser.in_waiting <= 0:
-                    break
+            success = False
+            no_correct_result_counter = 0
+            while not success:
+                char = self._ser.read()
+                res += char
+                # We need to check against char[0] here because command[0] returns character as integer
+                if char[0] == command[0]:
+                    success = True
+                elif self._ser.in_waiting <= 0:
+                    time.sleep(0.001)
+                    no_correct_result_counter += 1
+                    if no_correct_result_counter > 10:
+                        success = True
         # This is to ensure everything works when in simulation mode
         else:
             res = self._get_simulated_answer(self.raw_command)
-        self._done('raw', raw_command)
-        #print(raw_command, len(raw_command))
+        self._done('raw', self.raw_command)
         return res.decode()
     
     def _get_simulated_answer(self, command):

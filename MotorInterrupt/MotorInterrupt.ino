@@ -8,7 +8,7 @@ int not_moved = 0;
 float speedA = 10.0*378.21; // in steps per second
 float speedB = 10.0*11.71; // in steps per second
 byte PWMA = 40;
-byte PWMB = 100;
+byte PWMB = 80;
 const byte PWMTolerance = 50;
 volatile unsigned long last_timeA = 0;
 volatile unsigned long last_timeB = 0;
@@ -35,7 +35,7 @@ float slopeB = 0;
 float offsetA;
 float offsetB;
 const byte magic_number = 42;
-int burnin_time_ms = 100;
+int burnin_time_ms = 150;
 
 void setup()
 {
@@ -179,7 +179,7 @@ char move_to(char motor_id, long* target_pos) {
                 }
                 PWMValue = &PWMB;
                 counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB;
-                blockedThreshold = 24; target_speed = speedB; //last_time = &last_timeB;
+                blockedThreshold = 50; target_speed = speedB; //last_time = &last_timeB;
                 /*this_time = &this_timeB;*/ backlashSteps = 0; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
@@ -231,6 +231,7 @@ char move_to(char motor_id, long* target_pos) {
   long last_position = current_position + 1;
   unsigned long now;
   unsigned long last_loop_time = 0;
+  unsigned long last_blocked = 0;
   unsigned long last_moved = micros();
   not_moved = 0;
   
@@ -238,7 +239,7 @@ char move_to(char motor_id, long* target_pos) {
     now = micros();
 	  current_position = *counter;
 	  difference = current_position - *target_pos;
-  	if (last_position != current_position && (now - last_loop_time) > 8000) {//4.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
+  	if (last_position != current_position && (now - last_loop_time) > 7000) {//4.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
       //long time_diff = *this_time - *last_time;
       //if (time_diff != 0) {
       //speed_now = micros();
@@ -279,8 +280,12 @@ char move_to(char motor_id, long* target_pos) {
       last_position = current_position;
       last_moved = now;
       not_moved = 0;
-	  } else if ((now - last_moved) > 10.0e6/target_speed) {
+	  } else if ((now - last_moved) > 30000 && (now - last_blocked) > 10000) {
         not_moved++;
+        if (not_moved > 10 && *PWMValue < MaxPWMValue) {
+          (*PWMValue)++;
+        }
+        analogWrite(PWMPin, *PWMValue);
         //current_speed = 0;
         if (verbosity > 1) {
           Serial.print("Increasing not moved counter to: "); Serial.println(not_moved);
@@ -294,6 +299,7 @@ char move_to(char motor_id, long* target_pos) {
           not_moved = 0;
           break;
           }
+         last_blocked = now;
 	  }
   }
   digitalWrite(LaserPin, LOW);

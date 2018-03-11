@@ -73,7 +73,7 @@ class AppRoot(app.PyComponent):
     @event.action
     def initialize_UI(self):
         try:
-            self.laser_driver.logger.addHandler(StreamHandler(stream=StreamToInfoLabel(self.update_info_label)))
+            self.laser_driver.logger.addHandler(StreamHandler(stream=StreamToInfoLabel(lambda text: event.loop.call_soon(self.update_info_label, text))))
         except Exception as e:
             print(str(e))
             
@@ -152,6 +152,10 @@ class AppRoot(app.PyComponent):
     @event.action
     def on_raw_text_changed(self, text):
         self._mutate_raw_command(text)
+    
+    @event.action
+    def on_gcode_line_text_changed(self, text):
+        self._mutate_gcode_line(text)
         
     @event.action
     def set_current_mode(self, mode):
@@ -216,6 +220,7 @@ class AppRoot(app.PyComponent):
     
     @event.action
     def update_info_label(self, text):
+        print(text)
         if hasattr(self, 'view'):
             self.view.update_info_label(text)
         
@@ -514,6 +519,10 @@ class LineTab(ui.Widget):
                 self.gcode_line = ui.LineEdit(flex=3, placeholder_text='e.g. G01 Y10 Y2 Z-1')
             ui.HBox(flex=4)
             
+    @event.reaction('gcode_line.user_text')
+    def _text_changed(self, *events):
+        self.root.on_gcode_line_text_changed(self.gcode_line.user_text)
+    
     @event.action
     def propagate_change(self, name_changed):
         pass
