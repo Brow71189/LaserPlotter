@@ -216,11 +216,13 @@ class AppRoot(app.PyComponent):
     
     @event.action
     def update_info_label(self, text):
-        self.view.update_info_label(text)
+        if hasattr(self, 'view'):
+            self.view.update_info_label(text)
         
     @event.action
     def propagate_change(self, name_changed):
-        self.view.propagate_change(name_changed)
+        if hasattr(self, 'view'):
+            self.view.propagate_change(name_changed)
     
     def low_level_parameter_changed(self, description_dict):
         event.loop.call_soon(self.main_thread_callback, description_dict)
@@ -621,7 +623,6 @@ class Drawing(ui.CanvasWidget):
         window.addEventListener('resize', self._on_resize)
         
     def _on_resize(self, *events):
-        print('bla')
         self.force_redraw()
         
     @event.reaction('mouse_move')
@@ -693,6 +694,7 @@ class Drawing(ui.CanvasWidget):
         else:
             self._zoom += 1
         self.set_transform()
+        self.strokeWidth = 0.25 if self._zoom > 1 else 1
         if not self._do_drawing:
             window.requestAnimationFrame(self.draw)
     
@@ -704,6 +706,7 @@ class Drawing(ui.CanvasWidget):
         elif self._zoom > 0.33:
             self._zoom -= 0.33
         self.set_transform()
+        self.strokeWidth = 0.25 if self._zoom > 1 else 1
         if not self._do_drawing:
             window.requestAnimationFrame(self.draw)
  
