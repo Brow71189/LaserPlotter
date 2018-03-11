@@ -621,6 +621,7 @@ class Drawing(ui.CanvasWidget):
         self.strokeColor = 'black'
         self.cursorColor = 'red'
         self.strokeWidth = 1
+        self.cursorSize = 2
         self.lineCap = 'round'
         self._zoom = 1
         self._position = (0, 0)
@@ -669,7 +670,8 @@ class Drawing(ui.CanvasWidget):
         self._last_pos = pos
         self._last_cursor_pos = pos
         path = window.Path2D()
-        path.rect(self._last_pos[0]-2, self._last_pos[1]-2, 4, 4)
+        path.rect(self._last_pos[0]-self.cursorSize, self._last_pos[1]-self.cursorSize,
+                  2*self.cursorSize, 2*self.cursorSize)
         self._cursor_paths = path
         
     def draw(self):
@@ -703,7 +705,9 @@ class Drawing(ui.CanvasWidget):
         else:
             self._zoom += 1
         self.set_transform()
-        self.strokeWidth = 0.25 if self._zoom > 1 else 1
+        self.strokeWidth = 1/self._zoom
+        self.cursorSize = 2/self._zoom
+        self.move_cursor(self._last_cursor_pos)
         if not self._do_drawing:
             window.requestAnimationFrame(self.draw)
     
@@ -715,7 +719,10 @@ class Drawing(ui.CanvasWidget):
         elif self._zoom > 0.33:
             self._zoom -= 0.33
         self.set_transform()
-        self.strokeWidth = 0.25 if self._zoom > 1 else 1
+        #self.strokeWidth = 0.25 if self._zoom > 1 else 1
+        self.strokeWidth = 1/self._zoom
+        self.cursorSize = 2/self._zoom
+        self.move_cursor(self._last_cursor_pos)
         if not self._do_drawing:
             window.requestAnimationFrame(self.draw)
  
