@@ -268,10 +268,14 @@ class View(ui.Widget):
     """
     def init(self):
         with ui.VBox():
-            with ui.HSplit(flex=3):
+            with ui.HSplit(flex=3) as self.hsplit:
                 self.tab_panel = TabPanel(flex=2)
                 self.plot_panel = PlotPanel(flex=1)
             self.control_panel = ControlPanel(flex=1)
+            
+    @event.reaction('hsplit.splitter_positions')
+    def _splitter_changed(self, *events):
+        self.propagate_change('splitter_positions')
     
     @event.action
     def update_info_label(self, text):
@@ -395,14 +399,19 @@ class PlotPanel(ui.Widget):
         with ui.VBox():
             with ui.HBox(flex=0):
                 self.zoom_in_button = ui.Button(flex=0, text='+', title='zoom_in')
+                self.zoom_label = ui.Label(flex=0, text='1x', title='zoom_label', style='min-width:40px;text-align:center;')
                 self.zoom_out_button = ui.Button(flex=0, text='-', title='zoom_out')
                 self.clear_button = ui.Button(flex=0, text='clear', title='clear')
                 ui.Widget(flex=1)
-            with ui.VSplit(flex=1):    
+            with ui.VSplit(flex=1) as self.vsplit:    
                 self.drawing = Drawing(flex=3)
                 ui.Widget(flex=1)
         
         self.drawing.set_transform()
+        
+    @event.reaction('vsplit.splitter_positions')
+    def _splitter_changed(self, *events):
+        self.drawing.force_redraw()
             
     @event.action
     def propagate_change(self, name_changed):
@@ -419,14 +428,24 @@ class PlotPanel(ui.Widget):
                 self.drawing.start_drawing()
             else:
                 self.drawing.stop_drawing()
+        elif name_changed == 'splitter_positions':
+            self.drawing.force_redraw()
     
     @event.reaction('zoom_in_button.mouse_click', 'zoom_out_button.mouse_click', 'clear_button.mouse_click')
     def _button_clicked(self, *events):
         for ev in events:
             if ev.source.title == 'zoom_in':
                 self.drawing.zoom_in()
+                text = str(self.drawing._zoom)
+                if len(text) > 3:
+                    text = text[:4]
+                self.zoom_label.set_text(text+'x')
             elif ev.source.title == 'zoom_out':
                 self.drawing.zoom_out()
+                text = str(self.drawing._zoom)
+                if len(text) > 3:
+                    text = text[:4]
+                self.zoom_label.set_text(text+'x')
             elif ev.source.title == 'clear':
                 self.drawing.clear()
 
@@ -599,6 +618,11 @@ class Drawing(ui.CanvasWidget):
         self._line_paths = None
         self._cursor_paths = None
         self._do_drawing = False
+        window.addEventListener('resize', self._on_resize)
+        
+    def _on_resize(self, *events):
+        print('bla')
+        self.force_redraw()
         
     @event.reaction('mouse_move')
     def _on_mouse_move(self, *events):
@@ -611,6 +635,11 @@ class Drawing(ui.CanvasWidget):
         ev = events[-1]
         self._mouse_down_position = self._position
         self._mouse_down_mouse_position = ev.pos
+        
+    @event.action
+    def force_redraw(self):
+        if not self._do_drawing:
+            window.requestAnimationFrame(self.draw)
         
     def set_transform(self):
         self.ctx.setTransform(self._zoom, 0, 0, -self._zoom, self._position[0], self._position[1]+self.canvas.height)
@@ -635,7 +664,7 @@ class Drawing(ui.CanvasWidget):
         
     def draw(self):
         if self._do_drawing:
-            window.window.requestAnimationFrame(self.draw)
+            window.requestAnimationFrame(self.draw)
         self.ctx.setTransform(1, 0, 0, 1, 0, 0)
         self.ctx.clearRect(0, 0, self.ctx.canvas.width, self.ctx.canvas.height)
         self.set_transform()
@@ -652,8 +681,9 @@ class Drawing(ui.CanvasWidget):
         self._do_drawing = False
         
     def start_drawing(self):
-        self._do_drawing = True
-        self.draw()
+        if not self._do_drawing:
+            self._do_drawing = True
+            window.requestAnimationFrame(self.draw)
         
     def zoom_in(self):
         if self._zoom <= 0.33:
