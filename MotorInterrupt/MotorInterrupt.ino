@@ -184,7 +184,7 @@ char move_to(char motor_id, long* target_pos) {
                 PWMValue = &PWMB;
                 counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB;
                 blockedThreshold = 50; target_speed = speedB; //last_time = &last_timeB;
-                /*this_time = &this_timeB;*/ backlashSteps = 0; last_direction = &last_directionA; break;
+                /*this_time = &this_timeB;*/ backlashSteps = 0; last_direction = &last_directionB; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
@@ -223,10 +223,10 @@ char move_to(char motor_id, long* target_pos) {
 //  }
 
   if (*last_direction > 0 && difference < 0) {
-    //Serial.println("backlash left");
+    if (verbosity > 0) {Serial.println("backlash left");}
     *counter -= backlashSteps;
   } else if (*last_direction < 0 && difference > 0) {
-    //Serial.println("backlash right");
+    if (verbosity > 0) {Serial.println("backlash right");}
     *counter += backlashSteps;
   }
 
