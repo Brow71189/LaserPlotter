@@ -307,7 +307,7 @@ class LaserDriver(object):
                 char = self._ser.read()
                 res += char
                 # We need to check against char[0] here because command[0] returns character as integer
-                if char[0] == command[0]:
+                if len(char) > 0 and char[0] == command[0]:
                     success = True
                 elif self._ser.in_waiting <= 0:
                     time.sleep(0.001)
