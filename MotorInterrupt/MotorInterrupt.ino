@@ -29,13 +29,14 @@ const byte PWMPinB = 11;
 const byte SensorPinA = 4;
 const byte SensorPinB = 5;
 byte verbosity = 1; //0: Only send necessary status messages, 1: Also send information, 2: show debug info
-short last_direction = 0;
+short last_directionA = 0;
+short last_directionB = 0;
 float slopeA = 0;
 float slopeB = 0;
 float offsetA;
 float offsetB;
 const byte magic_number = 42;
-int burnin_time_ms = 150;
+short burnin_time_ms = 100;
 
 void setup()
 {
@@ -71,7 +72,8 @@ void loop()
   }
 }
 // X: move motor, V: set verbosity, R: ready check, P: get position, L: set laser state (for movements),
-// F: switch laser on/off (immediately), C: set counter, S: set speed, D: do speed calibration, G: get calibration
+// F: switch laser on/off (immediately), C: set counter, S: set speed, D: do speed calibration, G: get calibration,
+// N: set burnin time
 void process_line() {
   char cmd = Serial.read();
   char motor_id;
@@ -137,6 +139,7 @@ void process_line() {
       case 'G': Serial.print("SlopeA: "); Serial.print(slopeA, 4); Serial.print(", OffsetA: "); Serial.print(offsetA);
                 Serial.print(", SlopeB: "); Serial.print(slopeB, 4); Serial.print(", OffsetB: "); Serial.println(offsetB);
                 return;
+      case 'N': burnin_time_ms = (short)Serial.parseInt();
       
   }
   if (verbosity > 0) {
@@ -164,6 +167,7 @@ char move_to(char motor_id, long* target_pos) {
   //volatile unsigned long* last_time;
   //volatile unsigned long* this_time;
   bool has_calibration = false;
+  short* last_direction;
   switch (motor_id) {
       case 'A': if (slopeA > 0) {
                   PWMA = (byte)round(speedA*slopeA + offsetA);
@@ -172,7 +176,7 @@ char move_to(char motor_id, long* target_pos) {
                 PWMValue = &PWMA;
                 counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA;
                 blockedThreshold = 200; target_speed = speedA; //last_time = &last_timeA;
-                /*this_time = &this_timeA;*/ backlashSteps = 0; break;
+                /*this_time = &this_timeA;*/ backlashSteps = 100; last_direction = &last_directionA; break;
       case 'B': if (slopeB > 0) {
                   PWMB = (byte)round(speedB*slopeB + offsetB);
                   has_calibration = true;
@@ -180,7 +184,7 @@ char move_to(char motor_id, long* target_pos) {
                 PWMValue = &PWMB;
                 counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB;
                 blockedThreshold = 50; target_speed = speedB; //last_time = &last_timeB;
-                /*this_time = &this_timeB;*/ backlashSteps = 0; break;
+                /*this_time = &this_timeB;*/ backlashSteps = 0; last_direction = &last_directionA; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
@@ -202,22 +206,30 @@ char move_to(char motor_id, long* target_pos) {
   
   float current_speed = target_speed;
   long difference = *counter - *target_pos;
-  if (last_direction > 0 && difference < 0) {
+//  if (last_direction > 0 && difference < 0) {
+//    //Serial.println("backlash left");
+//    *counter -= backlashSteps;
+//  } else if (last_direction < 0 && difference > 0) {
+//    //Serial.println("backlash right");
+//    *counter += backlashSteps;
+//  }
+
+//  if (difference < 0) {
+//    last_direction = -1;
+//  } else if (difference > 0) {
+//    last_direction = 1;
+//  } else {
+//    last_direction = 0;
+//  }
+
+  if (*last_direction > 0 && difference < 0) {
     //Serial.println("backlash left");
     *counter -= backlashSteps;
-  } else if (last_direction < 0 && difference > 0) {
+  } else if (*last_direction < 0 && difference > 0) {
     //Serial.println("backlash right");
     *counter += backlashSteps;
   }
 
-  if (difference < 0) {
-    last_direction = -1;
-  } else if (difference > 0) {
-    last_direction = 1;
-  } else {
-    last_direction = 0;
-  }
-  
   if (LaserState) {
     //*SensorBank |= 1<<LaserPin;
     digitalWrite(LaserPin, HIGH);
@@ -239,6 +251,7 @@ char move_to(char motor_id, long* target_pos) {
     now = micros();
 	  current_position = *counter;
 	  difference = current_position - *target_pos;
+    
   	if (last_position != current_position && (now - last_loop_time) > 7000) {//4.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
       //long time_diff = *this_time - *last_time;
       //if (time_diff != 0) {
@@ -270,10 +283,12 @@ char move_to(char motor_id, long* target_pos) {
       if (difference > 0) {
           *MotorBank |= 1<<MotorPin1;
           *MotorBank &= ~(1<<MotorPin2);
+          *last_direction = 1;
       }
       else {
           *MotorBank |= 1<<MotorPin2;
           *MotorBank &= ~(1<<MotorPin1);
+          *last_direction = -1;
       }
       analogWrite(PWMPin, *PWMValue);
       last_loop_time = now;
