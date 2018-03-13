@@ -9,7 +9,7 @@ float speedA = 10.0*378.21; // in steps per second
 float speedB = 10.0*11.71; // in steps per second
 byte PWMA = 40;
 byte PWMB = 80;
-const byte PWMTolerance = 50;
+const byte PWMTolerance = 100;
 volatile unsigned long last_timeA = 0;
 volatile unsigned long last_timeB = 0;
 volatile unsigned long this_timeA = 0;
@@ -37,6 +37,8 @@ float offsetA;
 float offsetB;
 const byte magic_number = 42;
 short burnin_time_ms = 100;
+long position_at_direction_changeA = 0;
+long position_at_direction_changeB = 0;
 
 void setup()
 {
@@ -139,7 +141,8 @@ void process_line() {
       case 'G': Serial.print("SlopeA: "); Serial.print(slopeA, 4); Serial.print(", OffsetA: "); Serial.print(offsetA);
                 Serial.print(", SlopeB: "); Serial.print(slopeB, 4); Serial.print(", OffsetB: "); Serial.println(offsetB);
                 return;
-      case 'N': burnin_time_ms = (short)Serial.parseInt();
+      case 'N': burnin_time_ms = (short)Serial.parseInt(); Serial.write('N');
+                return;
       
   }
   if (verbosity > 0) {
@@ -168,6 +171,7 @@ char move_to(char motor_id, long* target_pos) {
   //volatile unsigned long* this_time;
   bool has_calibration = false;
   short* last_direction;
+  long* position_at_direction_change;
   switch (motor_id) {
       case 'A': if (slopeA > 0) {
                   PWMA = (byte)round(speedA*slopeA + offsetA);
@@ -176,7 +180,8 @@ char move_to(char motor_id, long* target_pos) {
                 PWMValue = &PWMA;
                 counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA;
                 blockedThreshold = 200; target_speed = speedA; //last_time = &last_timeA;
-                /*this_time = &this_timeA;*/ backlashSteps = 100; last_direction = &last_directionA; break;
+                /*this_time = &this_timeA;*/ backlashSteps = 100; last_direction = &last_directionA;
+                position_at_direction_change = &position_at_direction_changeA; break;
       case 'B': if (slopeB > 0) {
                   PWMB = (byte)round(speedB*slopeB + offsetB);
                   has_calibration = true;
@@ -184,7 +189,8 @@ char move_to(char motor_id, long* target_pos) {
                 PWMValue = &PWMB;
                 counter = &counterB; MotorPin1 = MotorBPin1; MotorPin2 = MotorBPin2; PWMPin = PWMPinB;
                 blockedThreshold = 50; target_speed = speedB; //last_time = &last_timeB;
-                /*this_time = &this_timeB;*/ backlashSteps = 0; last_direction = &last_directionB; break;
+                /*this_time = &this_timeB;*/ backlashSteps = 0; last_direction = &last_directionB;
+                position_at_direction_change = &position_at_direction_changeB; break;
       default: if (verbosity > 0) {
                  Serial.print("Invalid motor ID: "); Serial.println(motor_id);
                }
@@ -222,14 +228,6 @@ char move_to(char motor_id, long* target_pos) {
 //    last_direction = 0;
 //  }
 
-  if (*last_direction > 0 && difference < 0) {
-    if (verbosity > 0) {Serial.println("backlash left");}
-    *counter -= backlashSteps;
-  } else if (*last_direction < 0 && difference > 0) {
-    if (verbosity > 0) {Serial.println("backlash right");}
-    *counter += backlashSteps;
-  }
-
   if (LaserState) {
     //*SensorBank |= 1<<LaserPin;
     digitalWrite(LaserPin, HIGH);
@@ -246,6 +244,22 @@ char move_to(char motor_id, long* target_pos) {
   unsigned long last_blocked = 0;
   unsigned long last_moved = micros();
   not_moved = 0;
+
+  if (*last_direction > 0 && difference < 0) {
+    if (verbosity > 0) {Serial.println("backlash left");}
+      if (abs(current_position - *position_at_direction_change) < backlashSteps) {
+        *counter -= abs(current_position - *position_at_direction_change);
+      } else {
+        *counter -= backlashSteps;
+      }
+  } else if (*last_direction < 0 && difference > 0) {
+    if (verbosity > 0) {Serial.println("backlash right");}
+    if (abs(current_position - *position_at_direction_change) < backlashSteps) {
+        *counter += abs(current_position - *position_at_direction_change);
+      } else {
+        *counter += backlashSteps;
+      }
+  }
   
   while (difference != 0) {
     now = micros();
@@ -283,11 +297,17 @@ char move_to(char motor_id, long* target_pos) {
       if (difference > 0) {
           *MotorBank |= 1<<MotorPin1;
           *MotorBank &= ~(1<<MotorPin2);
+          if (*last_direction < 0) {
+            *position_at_direction_change = current_position;
+          }
           *last_direction = 1;
       }
       else {
           *MotorBank |= 1<<MotorPin2;
           *MotorBank &= ~(1<<MotorPin1);
+          if (*last_direction > 0) {
+            *position_at_direction_change = current_position;
+          }
           *last_direction = -1;
       }
       analogWrite(PWMPin, *PWMValue);
@@ -295,9 +315,9 @@ char move_to(char motor_id, long* target_pos) {
       last_position = current_position;
       last_moved = now;
       not_moved = 0;
-	  } else if ((now - last_moved) > 30000 && (now - last_blocked) > 10000) {
+	  } else if ((now - last_moved) > 10000 && (now - last_blocked) > 10000) {
         not_moved++;
-        if (not_moved > 10 && *PWMValue < MaxPWMValue) {
+        if (not_moved > 5 && *PWMValue < MaxPWMValue) {
           (*PWMValue)++;
         }
         analogWrite(PWMPin, *PWMValue);
