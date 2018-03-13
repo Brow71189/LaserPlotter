@@ -116,6 +116,7 @@ class LaserDriver(object):
         self.use_gcode_speeds = False
         self.fast_movement_speed = 20 # mm/s
         self.engraving_movement_speed = 2 # mm/s
+        self._burnin_time = 50 # ms
         self.simulation_mode = 0 # 0: No simulation, 1: Live view, 2: only simulate
         self.gcode_file = None
         self.gcode_line = None
@@ -129,6 +130,21 @@ class LaserDriver(object):
         self.load_config()
         
         self.state = 'idle'
+    
+    @property
+    def burnin_time(self):
+        return self._burnin_time
+        
+    @burnin_time.setter
+    def burnin_time(self, burnin_time):
+        if self._ser is not None or self.simulation_mode > 1:
+            res = self.send_raw(str(int(burnin_time)))
+            if res != 'N':
+                self.logger.error('Failed to set burnin time. Result was {} instead of "N"!'.format(res))
+            else:
+                self._burnin_time = int(burnin_time)
+        else:
+            self._burnin_time = int(burnin_time)
         
     @property
     def resolution(self):
@@ -474,7 +490,7 @@ class LaserDriver(object):
         try:
             if len(self._steps) > 0:
                 self.execute_move()
-        except RuntimeError:
+        except (RuntimeError, SerialException):
             self.state = 'error'
             raise
         else:
@@ -486,11 +502,12 @@ class LaserDriver(object):
         
     def process_file(self):
         self.state = 'active'
+        self.burnin_time = self.burnin_time # this is to update burnin time on the arduino
         if self._current_line is not None:
             try:
                 self.gcode_line = self._current_line
                 self.process_line()
-            except RuntimeError:
+            except (RuntimeError, SerialException):
                 self.state = 'error'
                 raise
 
@@ -545,6 +562,7 @@ class LaserDriver(object):
         parser.set('options', 'fast movement speed', str(self.fast_movement_speed))
         parser.set('options', 'engraving movement speed', str(self.engraving_movement_speed))
         parser.set('options', 'simulation mode', str(self.simulation_mode))
+        parser.set('options', 'burnin time', str(self.burnin_time))
         for key, value in self.__motor_ids.items():
             parser.set('motor ids', key, value)
         return parser
@@ -560,7 +578,8 @@ class LaserDriver(object):
         self.use_gcode_speeds = parser.getboolean('options', 'use gcode speeds', fallback=self.use_gcode_speeds)
         self.fast_movement_speed = parser.getfloat('options', 'fast movement speed', fallback=self.fast_movement_speed)
         self.engraving_movement_speed = parser.getfloat('options', 'engraving movement speed',
-                                                        fallback=self.engraving_movement_speed)    
+                                                        fallback=self.engraving_movement_speed)
+        self.burnin_time = parser.getint('options', 'burnin imte', fallback=self.burnin_time)
         self.simulation_mode = parser.getint('options', 'simulation mode', fallback=self.simulation_mode)
         for key, value in parser.items(section='motor ids'):
             self.__motor_ids[key] = value
@@ -592,8 +611,8 @@ class LaserDriver(object):
             delta_y = y - current_y
             line_length = np.sqrt(delta_x**2 + delta_y**2)
             angle = np.arctan2(delta_y, delta_x)
-            last_x = 0
-            last_y = 0
+            last_x = current_x
+            last_y = current_y
             for i in np.arange(0, line_length+1/self._resolution_mm, 1/self._resolution_mm):
                 if np.abs(last_x - i*np.cos(angle)) > 1/self._resolution_mm:
                     step = int(np.rint(i*np.cos(angle) * self.x_steps_per_mm)) + self._current_steps_x
@@ -674,13 +693,19 @@ class LaserDriver(object):
                 step = int(np.rint((c_x + radius*np.cos(current_angle+i)) * self.x_steps_per_mm))            
                 if step == 0:
                     step = 1
-                steps.append(('x', step))
+                if len(steps) > 0 and steps[-1][0] == 'x':
+                        steps[-1] = ('x', step)
+                else:
+                    steps.append(('x', step))
                 last_x = step/self.x_steps_per_mm
             if np.abs(last_y - (c_y + radius*np.sin(current_angle+i))) > 1/self._resolution_mm:
                 step = int(np.rint((c_y + radius*np.sin(current_angle+i)) * self.y_steps_per_mm))
                 if step == 0:
                     step = 1
-                steps.append(('y', step))
+                if len(steps) > 0 and steps[-1][0] == 'y':
+                        steps[-1] = ('y', step)
+                else:
+                    steps.append(('y', step))
                 last_y = step/self.y_steps_per_mm
                 
         x_step = int(np.rint(x*self.x_steps_per_mm))
@@ -726,6 +751,8 @@ class LaserDriver(object):
 
         if res != 'V':
             raise RuntimeError('Could not set verbosity. Returned "{}" instead of "V"!'.format(res))
+        
+        self.burnin_time = self.burnin_time # this is to update burnin time on arduino
         
     def close(self):
         self.save_config()

@@ -36,7 +36,7 @@ class AppRoot(app.PyComponent):
 
     settings_types = {'resolution': float, 'serial_port': str, 'serial_baudrate': int, 'x_steps_per_mm': float,
                       'y_steps_per_mm': float, 'fast_movement_speed': float, 'engraving_movement_speed': float,
-                      'use_gcode_speeds': bool, 'simulation_mode': int}
+                      'use_gcode_speeds': bool, 'simulation_mode': int, 'burnin_time': float}
 
     state_ = event.StringProp('idle', settable=True)
 
@@ -85,7 +85,8 @@ class AppRoot(app.PyComponent):
                     'fast_movement_speed': self.laser_driver.fast_movement_speed,
                     'engraving_movement_speed': self.laser_driver.engraving_movement_speed,
                     'use_gcode_speeds': self.laser_driver.use_gcode_speeds,
-                    'simulation_mode': self.laser_driver.simulation_mode}
+                    'simulation_mode': self.laser_driver.simulation_mode,
+                    'burnin_time': self.laser_driver.burnin_time}
         states = { 'idle': [('start_button.text', 'Start plot'),
                             ('start_button.disabled', True),
                             ('abort_button.text', 'Abort plot'),
@@ -164,6 +165,7 @@ class AppRoot(app.PyComponent):
 
     @event.action
     def handle_connect_clicked(self):
+        self.update_info_label('')
         if self.state == 'idle':
             self.laser_driver.execute_command('start connection')
             #self.update_info_label('connected')
@@ -173,11 +175,13 @@ class AppRoot(app.PyComponent):
 
     @event.action
     def handle_abort_clicked(self):
+        self.update_info_label('')
         self.laser_driver.abort()
         #self.update_info_label('abort')
 
     @event.action
     def handle_start_clicked(self):
+        self.update_info_label('')
 #        if self.current_mode == 'raw':
 #            self.propagate_change(self.raw_command)
         if self.state == 'ready':
@@ -206,8 +210,9 @@ class AppRoot(app.PyComponent):
         old_value = self.settings.get(setting_name)
         try:
             new_value = self.settings_types[setting_name](new_value)
-        except ValueError:
+        except ValueError as e:
             self.propagate_change('settings')
+            self.update_info_label(str(e))
         except KeyError as e:
             self.update_info_label(str(e))
         else:
@@ -220,7 +225,6 @@ class AppRoot(app.PyComponent):
 
     @event.action
     def update_info_label(self, text):
-        print(text)
         if hasattr(self, 'view'):
             self.view.update_info_label(text)
 
@@ -563,6 +567,7 @@ class SettingsTab(ui.Widget):
                     ui.Label(text='Serial baudrate: ')
                     ui.Label(text='Steps per mm (x, y): ')
                     ui.Label(text='Speed in mm/s (fast, engrave): ')
+                    ui.Label(text='Burnin time in ms: ')
                 with ui.VBox(flex=1):
                     self.resolution_widget = ui.LineEdit(title='resolution')
                     self.serial_port_widget = ui.LineEdit(title='serial_port')
@@ -573,6 +578,7 @@ class SettingsTab(ui.Widget):
                     with ui.HBox():
                         self.fast_speed_widget = ui.LineEdit(title='fast_movement_speed')
                         self.engrave_speed_widget = ui.LineEdit(title='engraving_movement_speed')
+                    self.burnin_time_widget = ui.LineEdit(title='burnin_time')
 
 
             ui.Widget(flex=1)
@@ -594,6 +600,7 @@ class SettingsTab(ui.Widget):
             self.y_steps_widget.set_text(str(self.root.settings.get('y_steps_per_mm', self.y_steps_widget.text)))
             self.fast_speed_widget.set_text(str(self.root.settings.get('fast_movement_speed', self.fast_speed_widget.text)))
             self.engrave_speed_widget.set_text(str(self.root.settings.get('engraving_movement_speed', self.engrave_speed_widget.text)))
+            self.burnin_time_widget.set_text(str(self.root.settings.get('burnin_time', self.burnin_time_widget.text)))
 
 class StreamToInfoLabel(object):
     def __init__(self, write_to_info_label_method):
