@@ -243,22 +243,24 @@ char move_to(char motor_id, long* target_pos) {
   unsigned long last_loop_time = 0;
   unsigned long last_blocked = 0;
   unsigned long last_moved = micros();
+  const long start_position = *counter;
+  const long start_time = last_moved;
   not_moved = 0;
 
   if (*last_direction > 0 && difference < 0) {
     if (verbosity > 0) {Serial.println("backlash left");}
-      if (abs(current_position - *position_at_direction_change) < backlashSteps) {
-        *counter -= abs(current_position - *position_at_direction_change);
-      } else {
-        *counter -= backlashSteps;
-      }
+    if (abs(current_position - *position_at_direction_change) < backlashSteps) {
+      *counter -= abs(current_position - *position_at_direction_change);
+    } else {
+      *counter -= backlashSteps;
+    }
   } else if (*last_direction < 0 && difference > 0) {
     if (verbosity > 0) {Serial.println("backlash right");}
     if (abs(current_position - *position_at_direction_change) < backlashSteps) {
-        *counter += abs(current_position - *position_at_direction_change);
-      } else {
-        *counter += backlashSteps;
-      }
+      *counter += abs(current_position - *position_at_direction_change);
+    } else {
+      *counter += backlashSteps;
+    }
   }
   
   while (difference != 0) {
@@ -266,7 +268,7 @@ char move_to(char motor_id, long* target_pos) {
 	  current_position = *counter;
 	  difference = current_position - *target_pos;
     
-  	if (last_position != current_position && (now - last_loop_time) > 7000) {//4.0e6/target_speed ) { // only update speed if counter changed since last time or if more time passed than we would expect for the given speed
+  	if ((last_position != current_position && (now - last_loop_time) > 7000) || (now-last_loop_time > 15000)) {// only update speed if counter changed since last time or if more time passed than we would expect for the given speed
       //long time_diff = *this_time - *last_time;
       //if (time_diff != 0) {
       //speed_now = micros();
@@ -291,9 +293,14 @@ char move_to(char motor_id, long* target_pos) {
   	  } else if (current_speed < target_speed && *PWMValue < MaxPWMValue) {
   		  (*PWMValue)++;
   	  }
-	
-	
-    
+
+      float average_speed = (float)abs(current_position - start_position)/(float)(now - start_time)
+      if (average_speed > target_speed && *PWMValue > MinPWMValue) {
+        (*PWMValue)--;
+      } else if (average_speed < target_speed && *PWMValue < MaxPWMValue) {
+        (*PWMValue)++;
+      }
+
       if (difference > 0) {
           *MotorBank |= 1<<MotorPin1;
           *MotorBank &= ~(1<<MotorPin2);
