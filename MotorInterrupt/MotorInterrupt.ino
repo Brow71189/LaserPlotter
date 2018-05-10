@@ -268,7 +268,7 @@ char move_to(char motor_id, long* target_pos) {
 	  current_position = *counter;
 	  difference = current_position - *target_pos;
     
-  	if ((last_position != current_position && (now - last_loop_time) > 7000) || (now-last_loop_time > 15000)) {// only update speed if counter changed since last time or if more time passed than we would expect for the given speed
+  	if ((last_position != current_position && (now - last_loop_time) > 7000) || (now-last_loop_time > 30000)) {// only update speed if counter changed since last time or if more time passed than we would expect for the given speed
       //long time_diff = *this_time - *last_time;
       //if (time_diff != 0) {
       //speed_now = micros();
@@ -294,11 +294,16 @@ char move_to(char motor_id, long* target_pos) {
   		  (*PWMValue)++;
   	  }
 
-      float average_speed = (float)abs(current_position - start_position)/(float)(now - start_time);
-      if (average_speed > target_speed && *PWMValue > MinPWMValue) {
+      float average_speed = (float)abs(current_position - start_position)/(float)(now - start_time)*1e6;
+      if (average_speed*0.5 > target_speed && *PWMValue > MinPWMValue) {
         (*PWMValue)--;
-      } else if (average_speed < target_speed && *PWMValue < MaxPWMValue) {
+      } else if (average_speed*2.0 < target_speed && *PWMValue < MaxPWMValue) {
         (*PWMValue)++;
+      }
+
+      if (verbosity > 1) {
+        Serial.print("Average speed: "); Serial.print(average_speed);
+        Serial.print(" Target speed: "); Serial.println(target_speed);
       }
 
       if (difference > 0) {
