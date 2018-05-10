@@ -180,7 +180,7 @@ char move_to(char motor_id, long* target_pos) {
                 PWMValue = &PWMA;
                 counter = &counterA; MotorPin1 = MotorAPin1; MotorPin2 = MotorAPin2; PWMPin = PWMPinA;
                 blockedThreshold = 200; target_speed = speedA; //last_time = &last_timeA;
-                /*this_time = &this_timeA;*/ backlashSteps = 100; last_direction = &last_directionA;
+                /*this_time = &this_timeA;*/ backlashSteps = 110; last_direction = &last_directionA;
                 position_at_direction_change = &position_at_direction_changeA; break;
       case 'B': if (slopeB > 0) {
                   PWMB = (byte)round(speedB*slopeB + offsetB);
@@ -294,7 +294,7 @@ char move_to(char motor_id, long* target_pos) {
   		  (*PWMValue)++;
   	  }
 
-      float average_speed = (float)abs(current_position - start_position)/(float)(now - start_time)
+      float average_speed = (float)abs(current_position - start_position)/(float)(now - start_time);
       if (average_speed > target_speed && *PWMValue > MinPWMValue) {
         (*PWMValue)--;
       } else if (average_speed < target_speed && *PWMValue < MaxPWMValue) {

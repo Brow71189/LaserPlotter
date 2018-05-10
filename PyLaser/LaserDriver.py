@@ -34,7 +34,7 @@ class LaserDriver(object):
                          '_target_position': {},
                          '_steps': [],
                          '_current_counter': 0,
-                         'gcode_file': None,
+                         #'gcode_file': None,
                          'gcode_line': None,
                          'raw_command': None,
                          '_thread': None},
@@ -62,7 +62,7 @@ class LaserDriver(object):
                          '_target_position': {},
                          '_steps': [],
                          '_current_counter': 0,
-                         'gcode_file': None,
+                         #'gcode_file': None,
                          'gcode_line': None,
                          'raw_command': None,
                          '_thread': None},
@@ -138,7 +138,7 @@ class LaserDriver(object):
     @burnin_time.setter
     def burnin_time(self, burnin_time):
         if self._ser is not None or self.simulation_mode > 1:
-            res = self.send_raw(str(int(burnin_time)))
+            res = self.send_raw('N'+str(int(burnin_time)))
             if res != 'N':
                 self.logger.error('Failed to set burnin time. Result was {} instead of "N"!'.format(res))
             else:
@@ -256,7 +256,6 @@ class LaserDriver(object):
                     self.gcode_file = StringIO(initial_value=content)
                 else:
                     self.gcode_file = content
-            
             def run():
                 try:
                     self.process_file()
@@ -510,7 +509,7 @@ class LaserDriver(object):
             except (RuntimeError, SerialException):
                 self.state = 'error'
                 raise
-
+        print(self.gcode_file)
         for line in self.gcode_file:
             if self._abort_move:
                 #self.state = 'ready'
